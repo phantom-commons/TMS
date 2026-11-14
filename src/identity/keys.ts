@@ -80,8 +80,9 @@ export async function decryptSeed(
 ): Promise<Identity> {
   const salt = stored.salt;
   if (!salt) throw new Error('identidad sin contraseña');
+
   const keyBytes = await deriveKey(password, salt);
-  const keyBytes = await deriveKey(password, stored.salt);
+
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
     keyBytes,
@@ -89,6 +90,7 @@ export async function decryptSeed(
     false,
     ['decrypt'],
   );
+
   const privateKey = new Uint8Array(
     await crypto.subtle.decrypt(
       { name: 'AES-GCM', iv: stored.iv },
@@ -96,6 +98,7 @@ export async function decryptSeed(
       stored.encryptedSeed,
     ),
   );
+
   const publicKey = ed.getPublicKey(privateKey);
   return { username: stored.username, privateKey, publicKey };
 }

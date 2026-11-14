@@ -8,7 +8,6 @@ import { createScene } from './render/scene';
 import { createSyncer } from './render/sync';
 import { ensureIdentity } from './ui/login';
 import { attachMenu } from './ui/menu';
-import { attachExportButton } from './ui/export';
 import { shortPubkey } from './identity/keys';
 import { HLClock } from './sim/hlc';
 import { bytesToHex } from './sim/hash';
