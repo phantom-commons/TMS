@@ -28,6 +28,159 @@ import { isError, planDrop, planLock, planPickUp, planPush, planPushTo, screenTo
 import { presenceState } from './sim/presence';
 import { generatePillars, homeRoomId, homeSeed, isHomeRoomId, starterCubes } from './sim/worldgen';
 import { createRelayClient, defaultRelayUrl, type RelayClient, type RelayStatus } from './net/relay-client';
+import { canWalkGlobal } from './sim/chunk-navigation';
+
+import { initDoorInteractions } from './render/interactions';
+
+// ... (después de inicializar tu escena, cámara y mundo)
+
+// Inicializar la escucha de clics en las puertas
+initDoorInteractions(canvas, camera, scene, (targetRoomId) => {
+  // Aquí manejas el cambio de habitación
+  transitionToRoom(targetRoomId);
+});
+
+function transitionToRoom(newRoomId: string) {
+  console.log(`Cambiando el estado del juego a la habitación: ${newRoomId}`);
+  
+  // 1. Opcional: Actualizar la URL con hash para que el link refleje la sala actual
+  window.location.hash = `#room=${newRoomId}`;
+
+  // 2. Limpiar la escena actual de Three.js y recargar el nuevo mundo/habitación
+  // (Aquí llamarías a tu lógica para reconstruir el mundo con los datos de la nueva sala)
+  window.location.reload(); // La forma más rápida y limpia si manejas el estado por URL
+}
+
+import './style.css';
+import * as THREE from 'three';
+import { createScene } from './render/scene';
+import { attachKeyboard, type Dir } from './input/keyboard';
+import { ChunkManager } from './sim/chunk-manager';
+import { ChunkRenderer } from './render/chunk-renderer';
+import { canWalkGlobal } from './sim/chunk-navigation';
+
+const canvas = document.getElementById('app') as HTMLCanvasElement;
+if (!canvas) throw new Error('missing canvas#app');
+
+// 1. Configurar escena 3D básica (sin límites de tamaño de habitación fijo)
+const VIEW_SIZE = 20;
+const { scene, camera, renderer } = createScene(canvas, VIEW_SIZE, VIEW_SIZE);
+
+// 2. Inicializar el sistema de Chunks (Radio de renderizado = 2 chunks al rededor)
+const chunkManager = new ChunkManager(2);
+const chunkRenderer = new ChunkRenderer(scene);
+
+// 3. Posición global inicial del jugador (ya no depende de una sala pequeña)
+const player = { x: 3, y: 3 };
+
+// Cargar los chunks iniciales en la posición del jugador al arrancar
+chunkManager.updatePlayerPosition(
+  player.x,
+  player.y,
+  (newChunk) => chunkRenderer.loadChunkMesh(newChunk),
+  (oldKey) => chunkRenderer.unloadChunkMesh(oldKey)
+);
+
+// 4. Crear el Mesh visual del Avatar del jugador
+const playerGeo = new THREE.CapsuleGeometry(0.25, 0.4, 6, 12);
+const playerMat = new THREE.MeshLambertMaterial({ color: 0x9b7bff });
+const playerMesh = new THREE.Mesh(playerGeo, playerMat);
+playerMesh.position.set(player.x + 0.5, 0.55, player.y + 0.5);
+scene.add(playerMesh);
+
+// 5. Lógica de movimiento adaptada a coordenadas globales y chunks
+let lastMove = 0;
+const COOLDOWN = 120; // Milisegundos por paso
+
+const step = (d: Dir) => {
+  const now = performance.now();
+  if (now - lastMove < COOLDOWN) return;
+  lastMove = now;
+
+  let nx = player.x;
+  let ny = player.y;
+  if (d === 'up') ny -= 1;
+  else if (d === 'down') ny += 1;
+  else if (d === 'left') nx -= 1;
+  else if (d === 'right') nx += 1;
+
+  // Validar colisiones usando el espacio virtual de chunks
+  if (canWalkGlobal(chunkManager, nx, ny)) {
+    player.x = nx;
+    player.y = ny;
+
+    // ¡Aquí ocurre la magia del Open World! 
+    // Cada vez que te mueves, el administrador evalúa si entraste a un nuevo chunk
+    chunkManager.updatePlayerPosition(
+      player.x,
+      player.y,
+      (newChunk) => chunkRenderer.loadChunkMesh(newChunk),
+      (oldKey) => chunkRenderer.unloadChunkMesh(oldKey)
+    );
+  }
+};
+
+attachKeyboard(step);
+
+// 6. Bucle de renderizado (Game Loop)
+let last = performance.now();
+const targetPosition = playerMesh.position.clone();
+
+function tick(now: number) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+
+  // Suavizar el movimiento visual del avatar
+  targetPosition.set(player.x + 0.5, 0.55, player.y + 0.5);
+  playerMesh.position.lerp(targetPosition, Math.min(1, dt * 14));
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+// Dentro de tu lógica de input o movimiento:
+const step = (d: Dir) => {
+  const p = world.players.local; // Posición actual del jugador (globales)
+  let nx = p.x;
+  let ny = p.y;
+
+  if (d === 'up') ny -= 1;
+  else if (d === 'down') ny += 1;
+  else if (d === 'left') nx -= 1;
+  else if (d === 'right') nx += 1;
+
+  // Comprobamos usando el espacio virtual de chunks
+  if (canWalkGlobal(chunkManager, nx, ny)) {
+    p.x = nx;
+    p.y = ny;
+
+    // Actualizamos la posición en el ChunkManager para cargar/descargar chunks dinámicamente
+    chunkManager.updatePlayerPosition(
+      p.x,
+      p.y,
+      (newChunk) => chunkRenderer.loadChunkMesh(newChunk),
+      (oldKey) => chunkRenderer.unloadChunkMesh(oldKey)
+    );
+  }
+};
+
+
+import { ChunkManager } from './sim/chunk-manager';
+import { ChunkRenderer } from './render/chunk-renderer';
+
+const chunkManager = new ChunkManager(2); // Renderiza un radio de 2 chunks alrededor
+const chunkRenderer = new ChunkRenderer(scene);
+
+// En tu función tick() o cada vez que el jugador cambie de coordenada (x, z):
+function onPlayerMove(playerX: number, playerZ: number) {
+  chunkManager.updatePlayerPosition(
+    playerX,
+    playerZ,
+    (newChunk) => chunkRenderer.loadChunkMesh(newChunk),     // Se ejecuta al entrar a un chunk nuevo
+    (oldKey) => chunkRenderer.unloadChunkMesh(oldKey)        // Se ejecuta al alejarse de un chunk
+  );
+}
 
 const short = (id: string) => `${id.slice(0, 6)}…${id.slice(-3)}`;
 
