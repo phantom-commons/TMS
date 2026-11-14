@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { canonical, chainHash, bytesToHex, hexToBytes, GENESIS_HASH } from './hash';
+import { canonical, chainHash, bytesToHex, hexToBytes } from './hash';
 
 describe('hash', () => {
   it('canonical no depende del orden de las claves', () => {

@@ -5,7 +5,7 @@ import { makeActor, emit } from './test-util';
 
 function start() {
   const a = makeActor();
-  const init = emit(a, 'INIT', { roomId: 'r', spawn: { x: 3, y: 3 }, owner: a.id });
+  const init = emit(a, 'INIT', { spawn: { x: 3, y: 3 } });
   return { a, init };
 }
 
@@ -19,8 +19,8 @@ describe('canStep', () => {
     expect(canStep(w, 1, 5, -1, 0)).toBe(false);
     expect(canStep(w, 5, 5, 2, 0)).toBe(false);
   });
-  it('bloquea cortar esquinas (objeto en 6,5)', () => {
-    expect(canStep(w, 5, 5, 1, -1)).toBe(false);
+  it('bloquea el cubo legacy de las rooms v1', () => {
+    expect(canStep(w, 5, 5, 1, 0)).toBe(false);
   });
 });
 

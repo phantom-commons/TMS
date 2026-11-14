@@ -1,6 +1,6 @@
 import { verifyEntry, type LogEntry } from './log';
 import { GENESIS_HASH } from './hash';
-import { replay } from './replay';
+import { applyEntry, replay } from './replay';
 import type { World } from './world';
 
 export type RelayEntry = { rseq: number; relayTime: number; entry: LogEntry };
@@ -12,6 +12,7 @@ export class RoomState {
   private pending: LogEntry[] = [];
   private heads = new Map<string, { seq: number; hash: string }>();
   private cache: World | null = null;
+  private confirmedWorld: World | null = null;
   private dirty = true;
 
   constructor(roomId: string) {
@@ -26,9 +27,24 @@ export class RoomState {
     return this.confirmed.length > 0 || this.pending.some((p) => p.type === 'INIT');
   }
 
+  entries(): readonly RelayEntry[] {
+    return this.confirmed;
+  }
+
+  allEntries(): LogEntry[] {
+    return [...this.confirmed.map((item) => item.entry), ...this.pending];
+  }
+
+  get pendingCount(): number {
+    return this.pending.length;
+  }
+
   // Entradas ya ordenadas por el relay. Verifica todo: el relay no es de fiar.
   applyConfirmed(items: RelayEntry[]): ApplyResult {
     const accepted: RelayEntry[] = [];
+    if (!this.confirmedWorld && this.confirmed.length) {
+      this.confirmedWorld = replay(this.confirmed.map((item) => item.entry));
+    }
     for (const it of items) {
       if (it.rseq <= this.lastRseq) continue; // duplicado
       if (it.rseq !== this.lastRseq + 1) return { accepted, gap: true };
@@ -49,8 +65,15 @@ export class RoomState {
         ? e.seq === head.seq + 1 && e.prevHash === head.hash
         : e.seq === 0 && e.prevHash === GENESIS_HASH;
       if (!chained) return { accepted, error: `broken chain at rseq ${it.rseq}` };
-      if (this.confirmed.length === 0 && e.type !== 'INIT') {
-        return { accepted, error: 'first entry must be INIT' };
+      if (!this.confirmedWorld) {
+        if (e.type !== 'INIT') return { accepted, error: 'first entry must be INIT' };
+        try {
+          this.confirmedWorld = replay([e]);
+        } catch (error) {
+          return { accepted, error: `invalid INIT at rseq ${it.rseq}: ${(error as Error).message}` };
+        }
+      } else if (!applyEntry(this.confirmedWorld, e)) {
+        return { accepted, error: `invalid ${e.type} action at rseq ${it.rseq}` };
       }
 
       this.heads.set(e.author, { seq: e.seq, hash: e.hash });
@@ -93,8 +116,12 @@ export class RoomState {
   // Confirmadas + pendientes (optimista). null si la room aún no existe.
   world(): World | null {
     if (!this.dirty) return this.cache;
-    const all = [...this.confirmed.map((c) => c.entry), ...this.pending];
-    this.cache = all.length > 0 && all[0].type === 'INIT' ? replay(all) : null;
+    if (this.pending.length === 0) {
+      this.cache = this.confirmedWorld;
+    } else {
+      const all = [...this.confirmed.map((c) => c.entry), ...this.pending];
+      this.cache = all.length > 0 && all[0].type === 'INIT' ? replay(all) : null;
+    }
     this.dirty = false;
     return this.cache;
   }

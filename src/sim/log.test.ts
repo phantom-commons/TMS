@@ -1,20 +1,21 @@
 import { describe, it, expect } from 'vitest';
-import { verifyChain } from './log';
-import { makeActor, emit } from './test-util';
+import { verifyChain, verifyEntry } from './log';
+import { makeActor, emit, emitLegacy } from './test-util';
 
 function chain() {
   const a = makeActor();
   const entries = [
-    emit(a, 'INIT', { roomId: 'r', spawn: { x: 3, y: 3 }, owner: a.id }),
+    emit(a, 'INIT', { spawn: { x: 3, y: 3 } }),
     emit(a, 'MOVE', { x: 4, y: 3 }),
     emit(a, 'MOVE', { x: 5, y: 3 }),
   ];
   return { a, entries };
 }
 
-describe('verifyChain', () => {
+describe('verifyChain / v2 signatures', () => {
   it('acepta una cadena íntegra', () => {
     const { a, entries } = chain();
+    expect(entries.every((entry) => entry.version === 2)).toBe(true);
     expect(verifyChain(entries, a.id).ok).toBe(true);
   });
 
@@ -35,5 +36,22 @@ describe('verifyChain', () => {
     const { entries } = chain();
     const other = makeActor();
     expect(verifyChain(entries, other.id).ok).toBe(false);
+  });
+
+
+  it('sigue verificando cadenas v1 y permite continuar con entradas v2', () => {
+    const actor = makeActor();
+    const oldInit = emitLegacy(actor, 'INIT', { spawn: { x: 3, y: 3 } });
+    const oldMove = emitLegacy(actor, 'MOVE', { x: 4, y: 3 });
+    const newMove = emit(actor, 'MOVE', { x: 5, y: 3 });
+    expect(oldInit.version).toBeUndefined();
+    expect(newMove.version).toBe(2);
+    expect(verifyChain([oldInit, oldMove, newMove], actor.id).ok).toBe(true);
+  });
+
+  it('protege type y seq, no solo payload', () => {
+    const { entries } = chain();
+    expect(verifyEntry({ ...entries[1], type: 'NOTE' })).toBe(false);
+    expect(verifyEntry({ ...entries[1], seq: 17 })).toBe(false);
   });
 });
