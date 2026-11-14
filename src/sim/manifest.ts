@@ -1,5 +1,5 @@
 // src/sim/manifest.ts
-import type { MaterialId } from './materials';
+//
 
 export type InteractionPolicy = 'none' | 'aggregate' | 'full';
 export type Visibility = 'private' | 'friends' | 'public';
