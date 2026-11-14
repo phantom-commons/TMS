@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { World } from '../sim/world';
+import type { EventPointer, World } from '../sim/world';
 import { paletteHue } from '../sim/worldgen';
 import { presenceState } from '../sim/presence';
 
@@ -37,7 +37,8 @@ function ghostGeometry(): THREE.BufferGeometry {
 export function createSyncer(scene: THREE.Scene, initial: World, localId: string): Syncer {
   const staticGroup = new THREE.Group();
   const entityGroup = new THREE.Group();
-  scene.add(staticGroup, entityGroup);
+  const trailGroup = new THREE.Group();
+  scene.add(staticGroup, entityGroup, trailGroup);
 
   const geoEntity = new THREE.BoxGeometry(TILE * 0.62, TILE * 0.62, TILE * 0.62);
   const geoEdges = new THREE.EdgesGeometry(geoEntity);
@@ -158,6 +159,80 @@ export function createSyncer(scene: THREE.Scene, initial: World, localId: string
   let time = 0;
   let floorTick = 0;
 
+  // ───────────── trails de movimiento (huellas digitales) ─────────────
+  const TRAIL_MAX = 12;
+  const TRAIL_Y = 0.03;
+  type TrailState = { mesh: THREE.InstancedMesh; color: THREE.Color };
+  const trails = new Map<string, TrailState>();
+  const trailGeo = new THREE.BoxGeometry(0.42, 0.03, 0.42);
+  const tmpTrail = new THREE.Vector3();
+  const tmpTrailMatrix = new THREE.Matrix4();
+  const tmpTrailColor = new THREE.Color();
+
+  const trailColor = (authorId: string) => {
+    tmpTrailColor.set(authorId === localId ? 0x9b7bff : 0x6fc3ff);
+    return tmpTrailColor;
+  };
+
+  /** Puntos de la huella (células transitadas) de un autor, de más reciente a más lejana. */
+  const trailPointsFor = (w: World, authorId: string): THREE.Vector3[] => {
+    const moves: EventPointer[] = [];
+    for (const idx of w.entityHistory[`player:${authorId}`] ?? []) {
+      const pointer = w.eventRefs[idx];
+      if (pointer && pointer.type === 'MOVE' && pointer.toCell) moves.push(pointer);
+    }
+    const last = moves.slice(-TRAIL_MAX);
+    const out: THREE.Vector3[] = [];
+    for (const pointer of last) {
+      const sep = pointer.toCell.indexOf(',');
+      const x = Number(pointer.toCell.slice(0, sep));
+      const y = Number(pointer.toCell.slice(sep + 1));
+      const p = tmpTrail.set(x + 0.5, TRAIL_Y, y + 0.5);
+      const prev = out[out.length - 1];
+      if (!prev || prev.distanceToSquared(p) > 1e-6) out.push(p);
+    }
+    return out;
+  };
+
+  const removeTrail = (authorId: string) => {
+    const t = trails.get(authorId);
+    if (!t) return;
+    trailGroup.remove(t.mesh);
+    t.mesh.geometry.dispose();
+    (t.mesh.material as THREE.Material).dispose();
+    trails.delete(authorId);
+  };
+
+  const updateTrail = (authorId: string, points: THREE.Vector3[]) => {
+    if (points.length < 2) {
+      removeTrail(authorId);
+      return;
+    }
+    let t = trails.get(authorId);
+    if (!t) {
+      const color = trailColor(authorId);
+      const mesh = new THREE.InstancedMesh(trailGeo, new THREE.MeshLambertMaterial({ color: color.clone(), transparent: true, opacity: 0.55 }), TRAIL_MAX);
+      mesh.visible = true;
+      mesh.instanceColor = new THREE.Color();
+      for (let i = 0; i < TRAIL_MAX; i += 1) mesh.setColorAt(i, color);
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      trailGroup.add(mesh);
+      t = { mesh, color };
+      trails.set(authorId, t);
+    }
+    const count = Math.min(points.length, TRAIL_MAX);
+    for (let i = 0; i < TRAIL_MAX; i += 1) {
+      if (i < count) {
+        tmpTrailMatrix.makeTranslation(points[i].x, points[i].y, points[i].z);
+      } else {
+        tmpTrailMatrix.makeTranslation(1e4, -1e3, 1e4);
+      }
+      t.mesh.setMatrixAt(i, tmpTrailMatrix);
+    }
+    t.mesh.instanceMatrix.needsUpdate = true;
+    if (t.mesh.instanceColor) t.mesh.instanceColor.needsUpdate = true;
+  };
+
   const colorFor = (id: string) =>
     id === localId
       ? new THREE.Color(0x9b7bff)
@@ -184,7 +259,9 @@ export function createSyncer(scene: THREE.Scene, initial: World, localId: string
     }
     for (const l of legacyMeshes) l.mesh.visible = w.cells[l.cellKey]?.kind === 'object';
 
+    const liveIds = new Set<string>();
     for (const [id, pl] of Object.entries(w.players)) {
+      liveIds.add(id);
       const state = presenceState(id, pres.selfId, pres.online, pl.hlc.t, pres.now);
       let a = avatars.get(id);
       if (!a) {
@@ -210,6 +287,7 @@ export function createSyncer(scene: THREE.Scene, initial: World, localId: string
       const bob = a.ghost ? Math.sin(time * 1.6 + a.phase) * 0.06 : 0;
       a.target.set(pl.x + 0.5, 0.55 + bob, pl.y + 0.5);
       a.mesh.position.lerp(a.target, Math.min(1, dt * 14));
+      updateTrail(id, trailPointsFor(w, id));
       const target = `player:${id}`;
       const lit = hover === target || selected === target;
       (a.mesh.material as THREE.MeshLambertMaterial).emissive.setHex(lit ? 0x443366 : 0x000000);
@@ -221,6 +299,9 @@ export function createSyncer(scene: THREE.Scene, initial: World, localId: string
         (avatar.mesh.material as THREE.Material).dispose();
         avatars.delete(id);
       }
+    }
+    for (const id of [...trails.keys()]) {
+      if (!liveIds.has(id)) removeTrail(id);
     }
 
     for (const entity of Object.values(w.entities)) {
@@ -273,7 +354,14 @@ export function createSyncer(scene: THREE.Scene, initial: World, localId: string
     selfPosition: () => avatars.get(localId)?.mesh.position ?? null,
     dispose() {
       clearStatic();
-      scene.remove(staticGroup, entityGroup);
+      for (const t of trails.values()) {
+        trailGroup.remove(t.mesh);
+        t.mesh.geometry.dispose();
+        (t.mesh.material as THREE.Material).dispose();
+      }
+      trails.clear();
+      trailGeo.dispose();
+      scene.remove(staticGroup, entityGroup, trailGroup);
     },
   };
 }

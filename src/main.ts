@@ -15,6 +15,7 @@ import { createSettingsStore, type Settings } from './ui/settings-store';
 import { createRadial } from './ui/radial';
 import { createInspector, type InspectorModel } from './ui/inspector';
 import { createDevHud } from './ui/devhud';
+import { createDoorDialog } from './ui/door';
 import { showToast } from './ui/toast';
 import { showHistoryPanel } from './ui/history';
 import { shortPubkey } from './identity/keys';
@@ -26,7 +27,7 @@ import { RoomState, type ApplyResult } from './sim/room';
 import { getCellStats, getCellHistory, getEntityHistory, getEntityStats } from './sim/history';
 import { isError, planDrop, planLock, planPickUp, planPush, planPushTo, screenToGrid } from './sim/actions';
 import { presenceState } from './sim/presence';
-import { generatePillars, homeRoomId, homeSeed, isHomeRoomId, starterCubes } from './sim/worldgen';
+import { generatePillars, homeRoomId, homeSeed, isHomeRoomId, roomSeed, starterCubes } from './sim/worldgen';
 import { createRelayClient, defaultRelayUrl, type RelayClient, type RelayStatus } from './net/relay-client';
 
 const short = (id: string) => `${id.slice(0, 6)}…${id.slice(-3)}`;
@@ -126,8 +127,11 @@ async function boot() {
         send('PLACE', { entityId: `${roomId}:cube-${i + 1}`, x: c.x, y: c.y, blocksMovement: true }),
       );
     } else if (ready && !isHomeRoomId(roomId)) {
-      send('INIT', { spawn, owner: author, doorTo: 'home' });
-      send('PLACE', { entityId: `${roomId}:cube-1`, x: 6, y: 5, blocksMovement: true });
+      const seed = roomSeed(roomId);
+      send('INIT', { spawn, owner: author, seed, doorTo: 'home' });
+      starterCubes(seed, spawn, generatePillars(seed, spawn)).forEach((c, i) =>
+        send('PLACE', { entityId: `${roomId}:cube-${i + 1}`, x: c.x, y: c.y, blocksMovement: true }),
+      );
     } else if (ready) {
       showToast('esa habitación todavía no existe en el relay', 4000);
     }
@@ -243,6 +247,18 @@ async function boot() {
     });
   };
 
+  const doorDialog = createDoorDialog({ enter: (roomId) => navigateToRoom(roomId) });
+  let doorOpen = false;
+  const openDoor = (dest: string) => {
+    if (doorOpen) return;
+    doorOpen = true;
+    doorDialog.open(dest);
+  };
+  const closeDoor = () => {
+    doorOpen = false;
+    doorDialog.close();
+  };
+
   // ───────────── acciones ─────────────
   const facingVec = () => {
     const g = screenToGrid(0, -1, rig.yaw());
@@ -267,6 +283,15 @@ async function boot() {
     if (isError(plan)) return showToast(plan.error);
     send(plan.type, { entityId: plan.entityId });
     showToast(plan.type === 'LOCK' ? 'bloqueado 🔒' : 'desbloqueado 🔓');
+  };
+
+  const doAttack = () => {
+    const id = hoverId ?? (selected && 'entity' in selected ? selected.entity : null);
+    if (!id) {
+      showToast('sin objetivo: selecciona o pasa el ratón');
+      return;
+    }
+    send('ATTACK', { entityId: id });
   };
 
   const cycleCamera = () => {
@@ -356,6 +381,7 @@ async function boot() {
   // ───────────── radial + ajustes + hud ─────────────
   const radial = createRadial([
     { id: 'pickdrop', icon: '🎒', label: 'Recoger / soltar', run: doPickDrop },
+    { id: 'attack', icon: '⚔️', label: 'Atacar', run: doAttack },
     { id: 'lock', icon: '🔒', label: 'Bloquear', run: doLock },
     { id: 'camera', icon: '🎥', label: 'Cámara', run: cycleCamera },
     { id: 'log', icon: '📜', label: 'Log de la sala', run: fullLog },
@@ -368,13 +394,13 @@ async function boot() {
     store,
     homeRoomId: home,
     roomId,
-    visitLink: () => `${location.origin}${location.pathname}?room=${roomId}`,
+    visitLink: () => `${location.origin}${location.pathname}?room=${encodeURIComponent(roomId)}`,
     goHome: () => navigateToRoom('home'),
   });
 
   const hints = document.createElement('div');
   hints.className = 'hints';
-  hints.textContent = 'WASD mover · F recoger/soltar · L bloquear · C cámara · Q/E girar · R radial · F2 dev';
+  hints.textContent = 'WASD mover · F recoger/soltar · G atacar · L bloquear · C cámara · Q/E girar · R radial · F2 dev';
   const chip = document.createElement('div');
   chip.className = 'chip';
   document.body.append(hints, chip);
@@ -397,6 +423,7 @@ async function boot() {
 
   attachActionKeys((a: ActionName) => {
     if (a === 'pickdrop') doPickDrop();
+    else if (a === 'attack') doAttack();
     else if (a === 'lock') doLock();
     else if (a === 'camera') cycleCamera();
     else if (a === 'turnL' && usesFacing(rig.mode)) rig.turn(-1);
@@ -405,6 +432,7 @@ async function boot() {
     else if (a === 'radial') radial.toggle();
     else if (a === 'escape') {
       document.getElementById('settings-overlay')?.remove();
+      closeDoor();
       selected = null;
       syncer.setSelected(null);
       refreshInspector();
@@ -421,8 +449,7 @@ async function boot() {
     onEntityClick: (id) => {
       if (id.startsWith('door:')) {
         const dest = id.slice('door:'.length);
-        showToast(`Viajando a ${dest === 'home' ? 'tu sala' : dest}…`);
-        navigateToRoom(dest);
+        openDoor(dest);
         return;
       }
       selected = { entity: id };
@@ -431,6 +458,15 @@ async function boot() {
       const st = getEntityStats(world, id);
       showToast(`${id.startsWith('player:') ? 'jugador' : 'objeto'} · ${st.clickCount} clics · ${st.movementCount} mov. · ${st.uniqueActors.length} actores`);
       refreshInspector();
+    },
+    onEntityPickup: (entityId: string) => {
+      const plan = planPickUp(world, author);
+      if (isError(plan)) {
+        showToast(plan.error);
+        return false;
+      }
+      send('PICK_UP', plan);
+      return true;
     },
     onEntityDrop: (id, x, y) => {
       const entity = world.entities[id];
@@ -445,7 +481,7 @@ async function boot() {
     onCellClick: (x, y) => {
       const clickedCell = world.cells[key(x, y)];
       if (clickedCell?.kind === 'door' && clickedCell.targetRoomId) {
-        navigateToRoom(clickedCell.targetRoomId);
+        openDoor(clickedCell.targetRoomId);
         return;
       }
       selected = { cell: { x, y } };
@@ -490,7 +526,7 @@ async function boot() {
     if (!p || travelling) return;
     const cell = world.cells[key(p.x, p.y)];
     if (cell?.kind !== 'door' || !cell.targetRoomId) return;
-    navigateToRoom(cell.targetRoomId);
+    openDoor(cell.targetRoomId);
   };
 
   const controller = createController([createKeyboard(), createTouchPad(), createGamepad()]);
@@ -553,36 +589,3 @@ boot().catch((e) => {
   console.error('boot failed:', e);
   document.body.innerHTML = `<pre style="color:#ff6b6b;padding:24px;font-family:monospace">boot failed:\n${e}</pre>`;
 });
-
-import { createRoomDevPanel } from './ui/room-dev-panel';
-import { DEFAULT_POLICY, ROOM_CONSTANTS, manifestFromWorld } from './sim/manifest';
-
-// ... dentro de boot(), después de createScene:
-
-const roomDev = createRoomDevPanel();
-
-window.addEventListener('keydown', (e) => {
-  if (e.key === 'F3' && e.shiftKey) {   // Shift+F3 abre el panel
-    roomDev.setVisible(roomDevHiddenToggle());
-  }
-});
-
-let roomDevHidden = true;
-const roomDevHiddenToggle = () => (roomDevHidden = !roomDevHidden);
-
-// Refresca el panel en cada refresh() del mundo
-const baseRefresh = refresh;
-const refreshWithDev = () => {
-  baseRefresh();
-  if (!roomDevHidden) {
-    roomDev.update({
-      manifest: manifestFromWorld(world),
-      policy: DEFAULT_POLICY,
-      constants: ROOM_CONSTANTS,
-      allowedEvents: ['INIT','ENTER','MOVE','PLACE','PICK_UP','DROP','PUSH','LOCK','UNLOCK','INTERACT'],
-      relayVerbCount: 10,
-      replayVerbCount: 10,
-    });
-  }
-};
-// Reemplaza `refresh()` por `refreshWithDev()` en todos los sitios del archivo

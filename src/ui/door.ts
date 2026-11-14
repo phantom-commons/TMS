@@ -1,0 +1,83 @@
+export type DoorDialog = {
+  open: (dest: string) => void;
+  close: () => void;
+  dispose: () => void;
+};
+
+/** Diálogo al tocar/acercarse a una puerta: pide el código de la sala destino. */
+export function createDoorDialog(deps: { enter: (roomId: string) => void }): DoorDialog {
+  const overlay = document.createElement('div');
+  overlay.id = 'door-overlay';
+  overlay.className = 'login-overlay';
+  const card = document.createElement('div');
+  card.className = 'login-card door';
+  overlay.append(card);
+  document.body.append(overlay);
+
+  const close = () => overlay.remove();
+
+  const open = (dest: string) => {
+    if (overlay.isConnected) return;
+    card.innerHTML = '';
+
+    const title = document.createElement('h1');
+    title.textContent = '¿A dónde vas?';
+    card.append(title);
+
+    const destEl = document.createElement('p');
+    destEl.className = 'door-dest';
+    destEl.textContent = dest === 'home' ? 'Tu sala' : `Sala ${dest}`;
+    card.append(destEl);
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'code';
+    input.maxLength = 64;
+    input.value = dest === 'home' ? '' : dest;
+    input.placeholder = 'código de sala';
+    card.append(input);
+
+    const err = document.createElement('p');
+    err.className = 'error';
+    err.textContent = '';
+    card.append(err);
+
+    const enter = document.createElement('button');
+    enter.type = 'button';
+    enter.textContent = 'Entrar';
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.textContent = 'Cancelar';
+    cancel.className = 'secondary';
+    const row = document.createElement('div');
+    row.className = 'door-actions';
+    row.append(enter, cancel);
+    card.append(input, err, row);
+
+    const submit = () => {
+      const roomId = dest === 'home' ? 'home' : input.value.trim() || dest;
+      if (!/^[A-Za-z0-9:_-]{1,64}$/.test(roomId)) {
+        err.textContent = 'código de sala inválido';
+        return;
+      }
+      close();
+      deps.enter(roomId);
+    };
+    enter.onclick = submit;
+    cancel.onclick = close;
+    overlay.addEventListener('pointerdown', (e) => {
+      if (e.target === overlay) close();
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') submit();
+    });
+
+    document.body.append(overlay);
+  };
+
+  const dispose = () => {
+    overlay.remove();
+  };
+
+  return { open, close, dispose };
+}

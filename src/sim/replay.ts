@@ -37,6 +37,7 @@ function ensureEntityStats(world: World, id: string): EntityStats {
     clicksSinceLastMove: 0,
     lastMovedAt: null,
     uniqueActors: [],
+    effects: [],
   });
 }
 
@@ -133,7 +134,7 @@ function moveEntityToRoom(entity: WorldEntity, roomId: string, x: number, y: num
 export function applyEntry(world: World, entry: LogEntry): boolean {
   const p = asObjectPayload(entry.payload);
   if (!p) return false;
-  const v2Only = ['PLACE', 'PICK_UP', 'DROP', 'PUSH', 'LOCK', 'UNLOCK', 'INTERACT'];
+  const v2Only = ['PLACE', 'PICK_UP', 'DROP', 'PUSH', 'LOCK', 'UNLOCK', 'INTERACT', 'ATTACK'];
   if (v2Only.includes(entry.type) && entry.version !== 2) return false;
 
   if (entry.type === 'ENTER') {
@@ -299,9 +300,12 @@ export function applyEntry(world: World, entry: LogEntry): boolean {
   if (entry.type === 'ATTACK') {
     const entityId = typeof p.entityId === 'string' ? p.entityId : '';
     const entity = world.entities[entityId];
-    const target = entity ? roomPos(entity, world) : null;
+    const targetEntityPos = entity && entity.location.kind === 'room' ? { x: entity.location.x, y: entity.location.y } : null;
+    const targetPlayerId = entityId.startsWith('player:') ? entityId.slice('player:'.length) : '';
+    const targetPlayer = world.players[targetPlayerId];
+    const target = targetEntityPos ?? (targetPlayer ? { x: targetPlayer.x, y: targetPlayer.y } : null);
     const attacker = world.players[entry.author];
-    if (!entity || !target || !attacker) return false;
+    if (!attacker || !target) return false;
     if (distanceChebyshev(attacker, target) > 1) return false;
     recordEvent(world, entry, { entityId, to: target, interaction: 'hit' });
     return true;

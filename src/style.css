@@ -165,6 +165,10 @@ body {
 .login-card button.secondary { background: transparent; color: #e0e0e0; border: 1px solid #2b2f3a; }
 
 .login-card.settings { width: min(440px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; }
+.login-card.door { width: min(360px, calc(100vw - 32px)); }
+.login-card .door-dest { margin: 0; color: #cfd3df; font-size: 14px; word-break: break-all; }
+.login-card .door-actions { display: flex; gap: 8px; }
+.login-card .door-actions button { flex: 1; }
 .login-card.settings h2 { margin: 12px 0 2px; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #8a90a2; }
 .seg { display: flex; flex-wrap: wrap; gap: 6px; }
 .seg button {
@@ -343,68 +347,4 @@ body {
     right: max(18px, env(safe-area-inset-right));
     bottom: max(22px, env(safe-area-inset-bottom));
   }
-}
-.room-dev-panel {
-  position: fixed;
-  top: 16px;
-  left: 16px;
-  width: min(440px, calc(100vw - 32px));
-  max-height: min(80vh, 800px);
-  overflow: auto;
-  z-index: 120;
-  padding: 12px;
-  background: rgba(16, 19, 26, 0.97);
-  border: 1px solid #343947;
-  border-radius: 10px;
-  color: #e8e9ee;
-  font: 12px/1.4 ui-monospace, "SF Mono", monospace;
-  box-shadow: 0 18px 55px rgba(0, 0, 0, 0.5);
-}
-.room-dev-panel header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-.room-dev-panel header button {
-  background: transparent;
-  border: 1px solid #454b5b;
-  color: #fff;
-  border-radius: 6px;
-  padding: 2px 8px;
-  cursor: pointer;
-}
-.rdev-section {
-  margin: 12px 0 4px;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: #9b7bff;
-}
-.rdev-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-.rdev-table td, .rdev-table th {
-  padding: 2px 6px;
-  border-bottom: 1px solid #232734;
-  text-align: left;
-}
-.rdev-table th {
-  color: #9ba3b4;
-  font-weight: 500;
-}
-.rdev-verbs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 4px;
-}
-.rdev-chip {
-  padding: 1px 6px;
-  background: #1a1d24;
-  border: 1px solid #2b2f3a;
-  border-radius: 4px;
-  color: #b8a7ff;
-  font-size: 11px;
 }
