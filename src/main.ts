@@ -460,6 +460,8 @@ async function boot() {
       refreshInspector();
     },
     onEntityPickup: (entityId: string) => {
+      const entity = world.entities[entityId];
+      if (!entity) return false;
       const plan = planPickUp(world, author);
       if (isError(plan)) {
         showToast(plan.error);

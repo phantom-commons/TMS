@@ -176,17 +176,19 @@ export function createSyncer(scene: THREE.Scene, initial: World, localId: string
 
   /** Puntos de la huella (células transitadas) de un autor, de más reciente a más lejana. */
   const trailPointsFor = (w: World, authorId: string): THREE.Vector3[] => {
-    const moves: EventPointer[] = [];
+    const moves: Array<{ pointer: EventPointer; toCell: string }> = [];
     for (const idx of w.entityHistory[`player:${authorId}`] ?? []) {
       const pointer = w.eventRefs[idx];
-      if (pointer && pointer.type === 'MOVE' && pointer.toCell) moves.push(pointer);
+      const toCell = pointer?.toCell;
+      if (pointer && pointer.type === 'MOVE' && toCell) moves.push({ pointer, toCell });
     }
     const last = moves.slice(-TRAIL_MAX);
     const out: THREE.Vector3[] = [];
-    for (const pointer of last) {
-      const sep = pointer.toCell.indexOf(',');
-      const x = Number(pointer.toCell.slice(0, sep));
-      const y = Number(pointer.toCell.slice(sep + 1));
+    for (const move of last) {
+      const toCell = move.toCell;
+      const sep = toCell.indexOf(',');
+      const x = Number(toCell.slice(0, sep));
+      const y = Number(toCell.slice(sep + 1));
       const p = tmpTrail.set(x + 0.5, TRAIL_Y, y + 0.5);
       const prev = out[out.length - 1];
       if (!prev || prev.distanceToSquared(p) > 1e-6) out.push(p);
@@ -213,9 +215,8 @@ export function createSyncer(scene: THREE.Scene, initial: World, localId: string
       const color = trailColor(authorId);
       const mesh = new THREE.InstancedMesh(trailGeo, new THREE.MeshLambertMaterial({ color: color.clone(), transparent: true, opacity: 0.55 }), TRAIL_MAX);
       mesh.visible = true;
-      mesh.instanceColor = new THREE.Color();
-      for (let i = 0; i < TRAIL_MAX; i += 1) mesh.setColorAt(i, color);
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      for (let i = 0; i < TRAIL_MAX; i += 1) mesh.setColorAt(i, color);
       trailGroup.add(mesh);
       t = { mesh, color };
       trails.set(authorId, t);
