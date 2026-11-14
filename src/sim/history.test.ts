@@ -8,41 +8,39 @@ describe('entity and cell histories', () => {
     const actor = makeActor();
     const entries = [
       emit(actor, 'INIT', { spawn: { x: 3, y: 3 } }),
-      emit(actor, 'MOVE', { x: 4, y: 3 }),
-      emit(actor, 'PLACE', { entityId: 'cube-1', x: 4, y: 4, blocksMovement: false }),
+      emit(actor, 'PLACE', { entityId: 'cube-1', x: 5, y: 5, blocksMovement: true }),
       emit(actor, 'INTERACT', { entityId: 'cube-1', kind: 'click' }),
-      emit(actor, 'MOVE', { x: 5, y: 3 }),
+      emit(actor, 'MOVE', { x: 4, y: 4 }),
       emit(actor, 'PICK_UP', { entityId: 'cube-1' }),
-      emit(actor, 'DROP', { entityId: 'cube-1', x: 6, y: 4 }),
+      emit(actor, 'DROP', { entityId: 'cube-1', x: 6, y: 5 }),
     ];
     const world = replay(entries);
 
-    expect(world.eventRefs).toHaveLength(7);
+    expect(world.eventRefs).toHaveLength(6);
     expect(getEntityHistory(world, entries, 'cube-1').map((e) => e.type)).toEqual([
       'PLACE', 'INTERACT', 'PICK_UP', 'DROP',
     ]);
-    expect(getAuthorHistory(world, entries, actor.id)).toHaveLength(7);
-    expect(getCellHistory(world, entries, 4, 4).map((e) => e.type)).toContain('PLACE');
+    expect(getAuthorHistory(world, entries, actor.id)).toHaveLength(6);
+    expect(getCellHistory(world, entries, 5, 5).map((e) => e.type)).toContain('PLACE');
     expect(getEntityStats(world, 'cube-1')).toMatchObject({
       clickCount: 1,
       pickupCount: 1,
       dropCount: 1,
       clicksSinceLastMove: 0,
     });
-    expect(getCellStats(world, 5, 3).playerVisits).toBe(1);
-    expect(world.entities['cube-1'].location).toEqual({ kind: 'room', roomId: 'r', x: 6, y: 4 });
+    expect(getCellStats(world, 4, 4).playerVisits).toBe(1);
+    expect(world.entities['cube-1'].location).toEqual({ kind: 'room', roomId: 'r', x: 6, y: 5 });
   });
 
-  it('allows pickup after the player approaches the object', () => {
+  it('prevents a player from picking up an object from far away', () => {
     const actor = makeActor();
     const entries = [
       emit(actor, 'INIT', { spawn: { x: 3, y: 3 } }),
-      emit(actor, 'PLACE', { entityId: 'cube-2', x: 4, y: 4 }),
-      emit(actor, 'MOVE', { x: 4, y: 3 }),
+      emit(actor, 'PLACE', { entityId: 'cube-2', x: 8, y: 8 }),
       emit(actor, 'PICK_UP', { entityId: 'cube-2' }),
     ];
     const world = replay(entries);
-    expect(world.entities['cube-2'].location).toEqual({ kind: 'inventory', owner: actor.id });
-    expect(getEntityHistory(world, entries, 'cube-2').map((e) => e.type)).toEqual(['PLACE', 'PICK_UP']);
+    expect(world.entities['cube-2'].location).toEqual({ kind: 'room', roomId: 'r', x: 8, y: 8 });
+    expect(getEntityHistory(world, entries, 'cube-2').map((e) => e.type)).toEqual(['PLACE']);
   });
 });

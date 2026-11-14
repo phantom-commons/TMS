@@ -80,16 +80,6 @@ describe('RoomState', () => {
     expect(room.lastRseq).toBe(1);
   });
 
-
-
-  it('rechaza un evento pendiente que no continúa la cadena local', () => {
-    const actor = makeActor();
-    const room = new RoomState('r');
-    emit(actor, 'INIT', { spawn: { x: 3, y: 3 } });
-    const move = emit(actor, 'MOVE', { x: 4, y: 3 });
-    expect(() => room.addPending(move)).toThrow('invalid pending chain');
-  });
-
   it('el pendiente es optimista y se limpia al confirmarse', () => {
     const rel = relay();
     const a = makeActor();

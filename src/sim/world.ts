@@ -105,7 +105,7 @@ export function createGenesisRoom(
   }
 
   // Old v1 rooms had a cube embedded in the tile map. Keep it visible and solid
-  // when replaying those logs; v2 rooms create movable cubes with PLACE events.
+  // when replaying those logs; new v2 rooms create movable cubes with PLACE events.
   if (options.legacyCube) cells[key(6, 5)] = { kind: 'object', hlc: GENESIS_HLC };
   cells[key(ROOM_W - 1, 7)] = {
     kind: 'door',

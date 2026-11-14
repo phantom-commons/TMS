@@ -39,18 +39,6 @@ export class RoomState {
     return this.pending.length;
   }
 
-  pendingEntries(): LogEntry[] {
-    return [...this.pending];
-  }
-
-  pendingByHash(hash: string): LogEntry | undefined {
-    return this.pending.find((entry) => entry.hash === hash);
-  }
-
-  hasConfirmedHash(hash: string): boolean {
-    return this.confirmed.some((item) => item.entry.hash === hash);
-  }
-
   // Entradas ya ordenadas por el relay. Verifica todo: el relay no es de fiar.
   applyConfirmed(items: RelayEntry[]): ApplyResult {
     const accepted: RelayEntry[] = [];
@@ -115,28 +103,8 @@ export class RoomState {
   }
 
   addPending(entry: LogEntry): void {
-    if (entry.roomId !== this.roomId || !verifyEntry(entry)) {
-      throw new Error('invalid pending entry');
-    }
-    if (this.hasConfirmedHash(entry.hash) || this.pending.some((item) => item.hash === entry.hash)) return;
-    const last = [...this.pending].reverse().find((item) => item.author === entry.author);
-    const head = this.heads.get(entry.author);
-    const expected = last
-      ? { seq: last.seq + 1, prevHash: last.hash }
-      : head ? { seq: head.seq + 1, prevHash: head.hash } : { seq: 0, prevHash: GENESIS_HASH };
-    if (entry.seq !== expected.seq || entry.prevHash !== expected.prevHash) {
-      throw new Error(`invalid pending chain for ${entry.author.slice(0, 8)} at seq ${entry.seq}`);
-    }
     this.pending.push(entry);
     this.dirty = true;
-  }
-
-  discardPendingFrom(author: string, seq: number): LogEntry[] {
-    const discarded = this.pending.filter((entry) => entry.author === author && entry.seq >= seq);
-    if (!discarded.length) return discarded;
-    this.pending = this.pending.filter((entry) => !(entry.author === author && entry.seq >= seq));
-    this.dirty = true;
-    return discarded;
   }
 
   dropPending(): void {

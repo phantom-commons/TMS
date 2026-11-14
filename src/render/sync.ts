@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { World, Cell } from '../sim/world';
+import type { World } from '../sim/world';
 
 const TILE = 1;
 const WALL_H = 1;
@@ -13,7 +13,6 @@ const COLORS = {
 export type Syncer = {
   update: (world: World, dt: number) => void;
   entityMeshes: () => ReadonlyMap<string, THREE.Mesh>;
-  previewDrop: (cell: { x: number; y: number } | null) => void;
 };
 
 export function createSyncer(scene: THREE.Scene, world: World, localId: string): Syncer {
@@ -29,13 +28,12 @@ export function createSyncer(scene: THREE.Scene, world: World, localId: string):
   const matFloor = new THREE.MeshLambertMaterial({ color: COLORS.floor });
   const baseFloorColor = new THREE.Color(COLORS.floor);
   const wornPathColor = new THREE.Color(0x786b4d);
+  const floorMaterials = new Map<string, THREE.MeshLambertMaterial>();
   const matWall = new THREE.MeshLambertMaterial({ color: COLORS.wall });
   const matObject = new THREE.MeshLambertMaterial({ color: COLORS.object });
   const matDoor = new THREE.MeshLambertMaterial({ color: COLORS.door });
-  const cellMeshes = new Map<string, THREE.Mesh>();
-  const floorMaterials = new Map<string, THREE.MeshLambertMaterial>();
 
-  const buildCell = (cellKey: string, cell: Cell): THREE.Mesh => {
+  for (const [cellKey, cell] of Object.entries(world.cells)) {
     const [xs, ys] = cellKey.split(',');
     const x = Number(xs);
     const y = Number(ys);
@@ -50,92 +48,45 @@ export function createSyncer(scene: THREE.Scene, world: World, localId: string):
       mesh = new THREE.Mesh(geoDoor, matDoor);
       mesh.position.set(x + 0.5, WALL_H / 2, y + 0.5);
     } else {
-      const material = matFloor.clone();
-      floorMaterials.set(cellKey, material);
-      mesh = new THREE.Mesh(geoFloor, material);
+      const floorMaterial = matFloor.clone();
+      floorMaterials.set(cellKey, floorMaterial);
+      mesh = new THREE.Mesh(geoFloor, floorMaterial);
       mesh.position.set(x + 0.5, 0, y + 0.5);
     }
-    mesh.castShadow = cell.kind === 'wall' || cell.kind === 'object' || cell.kind === 'door';
-    mesh.receiveShadow = true;
     mesh.userData.cell = { x, y };
-    mesh.userData.kind = cell.kind;
+    mesh.userData.legacyObject = cell.kind === 'object';
     cellGroup.add(mesh);
-    cellMeshes.set(cellKey, mesh);
-    return mesh;
-  };
-
-  for (const [cellKey, cell] of Object.entries(world.cells)) buildCell(cellKey, cell);
+  }
 
   const avatarGeo = new THREE.CapsuleGeometry(0.25, 0.4, 6, 12);
   const avatars = new Map<string, { mesh: THREE.Mesh; target: THREE.Vector3 }>();
   const entities = new Map<string, THREE.Mesh>();
-  // This map includes avatars for inspection. Only meshes with entityId can be picked up.
   const selectable = new Map<string, THREE.Mesh>();
 
   const colorFor = (id: string) => id === localId
     ? new THREE.Color(0x9b7bff)
     : new THREE.Color().setHSL((parseInt(id.slice(0, 6), 16) % 360) / 360, 0.6, 0.6);
 
-  const previewGeometry = new THREE.PlaneGeometry(0.9, 0.9);
-  const previewMaterial = new THREE.MeshBasicMaterial({
-    color: 0x9b7bff,
-    transparent: true,
-    opacity: 0.42,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-  });
-  const previewMesh = new THREE.Mesh(previewGeometry, previewMaterial);
-  previewMesh.rotation.x = -Math.PI / 2;
-  previewMesh.position.y = 0.075;
-  previewMesh.visible = false;
-  scene.add(previewMesh);
-
-  const previewDrop = (cell: { x: number; y: number } | null) => {
-    previewMesh.visible = !!cell;
-    if (cell) previewMesh.position.set(cell.x + 0.5, 0.075, cell.y + 0.5);
-  };
-
   const update = (w: World, dt: number) => {
-    // Replace cell geometry when replay changes a legacy object tile into floor.
-    for (const [cellKey, cell] of Object.entries(w.cells)) {
-      const existing = cellMeshes.get(cellKey);
-      if (!existing || existing.userData.kind !== cell.kind) {
-        if (existing) {
-          cellGroup.remove(existing);
-          const oldMaterial = existing.material;
-          if (oldMaterial instanceof THREE.Material && oldMaterial !== matFloor &&
-              oldMaterial !== matWall && oldMaterial !== matObject && oldMaterial !== matDoor) {
-            oldMaterial.dispose();
-          }
-          floorMaterials.delete(cellKey);
-          cellMeshes.delete(cellKey);
-        }
-        buildCell(cellKey, cell);
-      }
-    }
-
     for (const [cellKey, material] of floorMaterials) {
       const visits = w.cellActivity[cellKey]?.playerVisits ?? 0;
       const intensity = Math.min(0.78, Math.log1p(visits) / Math.log1p(80) * 0.78);
       material.color.copy(baseFloorColor).lerp(wornPathColor, intensity);
     }
-
-    for (const [id, player] of Object.entries(w.players)) {
-      let avatar = avatars.get(id);
-      if (!avatar) {
+    for (const [id, pl] of Object.entries(w.players)) {
+      let a = avatars.get(id);
+      if (!a) {
         const mesh = new THREE.Mesh(avatarGeo, new THREE.MeshLambertMaterial({ color: colorFor(id) }));
-        mesh.position.set(player.x + 0.5, 0.55, player.y + 0.5);
+        mesh.position.set(pl.x + 0.5, 0.55, pl.y + 0.5);
         scene.add(mesh);
-        mesh.castShadow = true;
         mesh.userData.targetId = `player:${id}`;
         selectable.set(`player:${id}`, mesh);
-        avatar = { mesh, target: mesh.position.clone() };
-        avatars.set(id, avatar);
+        a = { mesh, target: mesh.position.clone() };
+        avatars.set(id, a);
       }
-      avatar.target.set(player.x + 0.5, 0.55, player.y + 0.5);
-      avatar.mesh.position.lerp(avatar.target, Math.min(1, dt * 14));
+      a.target.set(pl.x + 0.5, 0.55, pl.y + 0.5);
+      a.mesh.position.lerp(a.target, Math.min(1, dt * 14));
     }
-
     for (const [id, avatar] of avatars) {
       if (!(id in w.players)) {
         scene.remove(avatar.mesh);
@@ -159,8 +110,6 @@ export function createSyncer(scene: THREE.Scene, world: World, localId: string):
       let mesh = entities.get(entity.id);
       if (!mesh) {
         mesh = new THREE.Mesh(geoEntity, matObject.clone());
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
         mesh.userData.entityId = entity.id;
         entityGroup.add(mesh);
         entities.set(entity.id, mesh);
@@ -170,7 +119,6 @@ export function createSyncer(scene: THREE.Scene, world: World, localId: string):
       mesh.rotation.y = entity.lockedBy ? Math.PI / 4 : 0;
       mesh.userData.entityId = entity.id;
     }
-
     for (const [id, mesh] of entities) {
       if (!w.entities[id]) {
         entityGroup.remove(mesh);
@@ -182,5 +130,5 @@ export function createSyncer(scene: THREE.Scene, world: World, localId: string):
   };
 
   update(world, 0);
-  return { update, entityMeshes: () => selectable, previewDrop };
+  return { update, entityMeshes: () => selectable };
 }
