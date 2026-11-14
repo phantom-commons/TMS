@@ -1,6 +1,0 @@
-npm run test
-npm run lint
-npm run relay
-npm run dev
-watch -n1 "sqlite3 server/relay.db 'select room_id, rseq, substr(author,1,8), seq, relay_time from entries order by rseq desc limit 15'"
-

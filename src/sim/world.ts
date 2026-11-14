@@ -1,11 +1,51 @@
+import type { MaterialId } from './materials';
+
 export type HLC = { t: number; c: number };
 
 export type CellKind = 'floor' | 'wall' | 'object' | 'door';
+
+export type LiquidState = {
+  material: MaterialId;
+  amount: number;
+};
+
+export type Residue = {
+  material: MaterialId;
+  amount: number;
+  where: 'paws' | 'mouth' | 'body';
+};
+
+export type CausalEffect = {
+  effect: string;
+  material?: MaterialId;
+  amount?: number;
+  atBucket?: number;
+};
+
+export type CreatureState = {
+  massKg: number;
+  bloodAlcohol: number;
+  stunUntilBucket: number;
+  needs: {
+    grooms: boolean;
+  };
+};
+
+export type Player = {
+  x: number;
+  y: number;
+  hlc: HLC;
+  bloodAlcohol?: number;
+  residue?: Residue[];
+};
+
 export type Cell = {
   kind: CellKind;
   owner?: string;
   hlc: HLC;
   targetRoomId?: string;
+  liquid?: LiquidState;
+  residue?: Residue[];
 };
 
 export type AssetRef = {
@@ -22,12 +62,14 @@ export type EntityLocation =
 
 export type WorldEntity = {
   id: string;
-  kind: 'object';
+  kind: 'object' | 'creature';
   createdBy: string;
   location: EntityLocation;
   blocksMovement: boolean;
   lockedBy?: string;
   asset?: AssetRef;
+  creature?: CreatureState;
+  residue?: Residue[];
 };
 
 export type EventPointer = {
@@ -62,18 +104,35 @@ export type EntityStats = {
   clicksSinceLastMove: number;
   lastMovedAt: number | null;
   uniqueActors: string[];
+  effects: CausalEffect[];
 };
+
+export function emptyEntityStats(): EntityStats {
+  return {
+    eventCount: 0,
+    clickCount: 0,
+    movementCount: 0,
+    pickupCount: 0,
+    dropCount: 0,
+    clicksSinceLastMove: 0,
+    lastMovedAt: null,
+    uniqueActors: [],
+    effects: [],
+  };
+}
 
 export type World = {
   roomId: string;
   size: { w: number; h: number };
   cells: Record<string, Cell>;
-  players: Record<string, { x: number; y: number; hlc: HLC }>;
+  players: Record<string, Player>;
   entities: Record<string, WorldEntity>;
   inventories: Record<string, string[]>;
   spawn: { x: number; y: number };
   /** Semilla de generación (hex). null en salas antiguas sin generación. */
   seed: string | null;
+  lastHlcTime: number;
+  lastTickBucket: number;
 
   // Rebuildable projections. Each signed event is represented once in eventRefs;
   // the maps below contain integer pointers, never copied event payloads.
@@ -106,8 +165,6 @@ export function createGenesisRoom(
     }
   }
 
-  // Old v1 rooms had a cube embedded in the tile map. Keep it visible and solid
-  // when replaying those logs; new v2 rooms create movable cubes with PLACE events.
   for (const p of options.pillars ?? []) cells[key(p.x, p.y)] = { kind: 'wall', hlc: GENESIS_HLC };
   if (options.legacyCube) cells[key(6, 5)] = { kind: 'object', hlc: GENESIS_HLC };
   cells[key(ROOM_W - 1, 7)] = {
@@ -125,6 +182,8 @@ export function createGenesisRoom(
     inventories: {},
     spawn,
     seed: options.seed ?? null,
+    lastHlcTime: 0,
+    lastTickBucket: 0,
     eventRefs: [],
     eventIndex: {},
     entityHistory: {},

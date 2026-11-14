@@ -28,159 +28,6 @@ import { isError, planDrop, planLock, planPickUp, planPush, planPushTo, screenTo
 import { presenceState } from './sim/presence';
 import { generatePillars, homeRoomId, homeSeed, isHomeRoomId, starterCubes } from './sim/worldgen';
 import { createRelayClient, defaultRelayUrl, type RelayClient, type RelayStatus } from './net/relay-client';
-import { canWalkGlobal } from './sim/chunk-navigation';
-
-import { initDoorInteractions } from './render/interactions';
-
-// ... (después de inicializar tu escena, cámara y mundo)
-
-// Inicializar la escucha de clics en las puertas
-initDoorInteractions(canvas, camera, scene, (targetRoomId) => {
-  // Aquí manejas el cambio de habitación
-  transitionToRoom(targetRoomId);
-});
-
-function transitionToRoom(newRoomId: string) {
-  console.log(`Cambiando el estado del juego a la habitación: ${newRoomId}`);
-  
-  // 1. Opcional: Actualizar la URL con hash para que el link refleje la sala actual
-  window.location.hash = `#room=${newRoomId}`;
-
-  // 2. Limpiar la escena actual de Three.js y recargar el nuevo mundo/habitación
-  // (Aquí llamarías a tu lógica para reconstruir el mundo con los datos de la nueva sala)
-  window.location.reload(); // La forma más rápida y limpia si manejas el estado por URL
-}
-
-import './style.css';
-import * as THREE from 'three';
-import { createScene } from './render/scene';
-import { attachKeyboard, type Dir } from './input/keyboard';
-import { ChunkManager } from './sim/chunk-manager';
-import { ChunkRenderer } from './render/chunk-renderer';
-import { canWalkGlobal } from './sim/chunk-navigation';
-
-const canvas = document.getElementById('app') as HTMLCanvasElement;
-if (!canvas) throw new Error('missing canvas#app');
-
-// 1. Configurar escena 3D básica (sin límites de tamaño de habitación fijo)
-const VIEW_SIZE = 20;
-const { scene, camera, renderer } = createScene(canvas, VIEW_SIZE, VIEW_SIZE);
-
-// 2. Inicializar el sistema de Chunks (Radio de renderizado = 2 chunks al rededor)
-const chunkManager = new ChunkManager(2);
-const chunkRenderer = new ChunkRenderer(scene);
-
-// 3. Posición global inicial del jugador (ya no depende de una sala pequeña)
-const player = { x: 3, y: 3 };
-
-// Cargar los chunks iniciales en la posición del jugador al arrancar
-chunkManager.updatePlayerPosition(
-  player.x,
-  player.y,
-  (newChunk) => chunkRenderer.loadChunkMesh(newChunk),
-  (oldKey) => chunkRenderer.unloadChunkMesh(oldKey)
-);
-
-// 4. Crear el Mesh visual del Avatar del jugador
-const playerGeo = new THREE.CapsuleGeometry(0.25, 0.4, 6, 12);
-const playerMat = new THREE.MeshLambertMaterial({ color: 0x9b7bff });
-const playerMesh = new THREE.Mesh(playerGeo, playerMat);
-playerMesh.position.set(player.x + 0.5, 0.55, player.y + 0.5);
-scene.add(playerMesh);
-
-// 5. Lógica de movimiento adaptada a coordenadas globales y chunks
-let lastMove = 0;
-const COOLDOWN = 120; // Milisegundos por paso
-
-const step = (d: Dir) => {
-  const now = performance.now();
-  if (now - lastMove < COOLDOWN) return;
-  lastMove = now;
-
-  let nx = player.x;
-  let ny = player.y;
-  if (d === 'up') ny -= 1;
-  else if (d === 'down') ny += 1;
-  else if (d === 'left') nx -= 1;
-  else if (d === 'right') nx += 1;
-
-  // Validar colisiones usando el espacio virtual de chunks
-  if (canWalkGlobal(chunkManager, nx, ny)) {
-    player.x = nx;
-    player.y = ny;
-
-    // ¡Aquí ocurre la magia del Open World! 
-    // Cada vez que te mueves, el administrador evalúa si entraste a un nuevo chunk
-    chunkManager.updatePlayerPosition(
-      player.x,
-      player.y,
-      (newChunk) => chunkRenderer.loadChunkMesh(newChunk),
-      (oldKey) => chunkRenderer.unloadChunkMesh(oldKey)
-    );
-  }
-};
-
-attachKeyboard(step);
-
-// 6. Bucle de renderizado (Game Loop)
-let last = performance.now();
-const targetPosition = playerMesh.position.clone();
-
-function tick(now: number) {
-  const dt = Math.min(0.05, (now - last) / 1000);
-  last = now;
-
-  // Suavizar el movimiento visual del avatar
-  targetPosition.set(player.x + 0.5, 0.55, player.y + 0.5);
-  playerMesh.position.lerp(targetPosition, Math.min(1, dt * 14));
-
-  renderer.render(scene, camera);
-  requestAnimationFrame(tick);
-}
-requestAnimationFrame(tick);
-
-// Dentro de tu lógica de input o movimiento:
-const step = (d: Dir) => {
-  const p = world.players.local; // Posición actual del jugador (globales)
-  let nx = p.x;
-  let ny = p.y;
-
-  if (d === 'up') ny -= 1;
-  else if (d === 'down') ny += 1;
-  else if (d === 'left') nx -= 1;
-  else if (d === 'right') nx += 1;
-
-  // Comprobamos usando el espacio virtual de chunks
-  if (canWalkGlobal(chunkManager, nx, ny)) {
-    p.x = nx;
-    p.y = ny;
-
-    // Actualizamos la posición en el ChunkManager para cargar/descargar chunks dinámicamente
-    chunkManager.updatePlayerPosition(
-      p.x,
-      p.y,
-      (newChunk) => chunkRenderer.loadChunkMesh(newChunk),
-      (oldKey) => chunkRenderer.unloadChunkMesh(oldKey)
-    );
-  }
-};
-
-
-import { ChunkManager } from './sim/chunk-manager';
-import { ChunkRenderer } from './render/chunk-renderer';
-
-const chunkManager = new ChunkManager(2); // Renderiza un radio de 2 chunks alrededor
-const chunkRenderer = new ChunkRenderer(scene);
-
-// En tu función tick() o cada vez que el jugador cambie de coordenada (x, z):
-function onPlayerMove(playerX: number, playerZ: number) {
-  chunkManager.updatePlayerPosition(
-    playerX,
-    playerZ,
-    (newChunk) => chunkRenderer.loadChunkMesh(newChunk),     // Se ejecuta al entrar a un chunk nuevo
-    (oldKey) => chunkRenderer.unloadChunkMesh(oldKey)        // Se ejecuta al alejarse de un chunk
-  );
-}
 
 const short = (id: string) => `${id.slice(0, 6)}…${id.slice(-3)}`;
 
@@ -191,9 +38,8 @@ async function boot() {
 
   const store = createSettingsStore();
   const home = homeRoomId(author);
-  const requested = new URLSearchParams(location.search).get('room');
-  const roomId = requested ?? home;
-  if (!/^[A-Za-z0-9_-]{1,64}$/.test(roomId)) throw new Error('room inválida');
+  const requested = new URLSearchParams(location.search).get('room')?.trim() || null;
+  const roomId = requested && /^[A-Za-z0-9:_-]{1,64}$/.test(requested) ? requested : home;
   const ownHome = roomId === home;
 
   const clock = new HLClock(() => Date.now());
@@ -210,7 +56,7 @@ async function boot() {
     for (const e of await loadPending(roomId)) {
       if (e.author !== author) break;
       const next = room.nextFor(author);
-      if (e.seq < next.seq) continue; // ya confirmada
+      if (e.seq < next.seq) continue;
       if (e.seq !== next.seq || e.prevHash !== next.prevHash || !verifyEntry(e)) break;
       room.addPending(e);
     }
@@ -244,7 +90,7 @@ async function boot() {
   // ───────────── red ─────────────
   let relay: RelayClient | null = null;
   let status: RelayStatus = 'closed';
-  let ready = false; // relay conectado y sincronizado
+  let ready = false;
   let online: ReadonlySet<string> = new Set();
 
   const send = (type: LogEntryType, payload: unknown) => {
@@ -265,7 +111,7 @@ async function boot() {
         const e = queue.shift();
         if (e) relay?.send(e);
       }
-      if (queue.length) setTimeout(pump, 450); // ritmo bajo el límite del relay
+      if (queue.length) setTimeout(pump, 450);
     };
     pump();
   };
@@ -274,15 +120,14 @@ async function boot() {
     if (room.hasInit()) return;
     const spawn = { x: 3, y: 3 };
     if (ownHome) {
-      // tu habitación: se genera de tus 24 palabras, sin red
       const seed = homeSeed(author);
       send('INIT', { spawn, owner: author, seed, doorTo: 'lobby' });
       starterCubes(seed, spawn, generatePillars(seed, spawn)).forEach((c, i) =>
-        send('PLACE', { entityId: `cube-${i + 1}`, x: c.x, y: c.y, blocksMovement: true }),
+        send('PLACE', { entityId: `${roomId}:cube-${i + 1}`, x: c.x, y: c.y, blocksMovement: true }),
       );
     } else if (ready && !isHomeRoomId(roomId)) {
       send('INIT', { spawn, owner: author, doorTo: 'home' });
-      send('PLACE', { entityId: 'cube-1', x: 6, y: 5, blocksMovement: true });
+      send('PLACE', { entityId: `${roomId}:cube-1`, x: 6, y: 5, blocksMovement: true });
     } else if (ready) {
       showToast('esa habitación todavía no existe en el relay', 4000);
     }
@@ -323,7 +168,6 @@ async function boot() {
         },
         onSync: (items, head, reset) => {
           if (reset) {
-            // el relay tiene menos historia que tu caché (p. ej. borraron relay.db): se vuelve a sembrar con lo tuyo
             const mine = room.allEntries().filter((e) => e.author === author);
             room = new RoomState(roomId);
             for (const e of mine) room.addPending(e);
@@ -349,7 +193,7 @@ async function boot() {
         },
         onError: (code, hash, message) => {
           console.warn('relay:', code, message);
-          if (hash && !room.pendingList().some((p) => p.hash === hash)) return; // eco de algo ya descartado
+          if (hash && !room.pendingList().some((p) => p.hash === hash)) return;
           if (code === 'RATE_LIMIT') {
             setTimeout(flushPending, 1000);
             return;
@@ -360,7 +204,7 @@ async function boot() {
             refresh();
             void persistPending(true);
           }
-          relay?.resync(); // si faltaba entrar, ensurePresence lo repite
+          relay?.resync();
         },
         onPresence: (list) => {
           online = new Set(list);
@@ -368,12 +212,35 @@ async function boot() {
       },
     });
   };
+
   const stopRelay = () => {
     relay?.close();
     relay = null;
     ready = false;
     status = 'closed';
     online = new Set();
+  };
+
+  // ───────────── navegación entre salas (puerta azul: pisar o hacer clic) ─────────────
+  let travelling = false;
+  const navigateToRoom = (targetRaw: string) => {
+    if (travelling) return;
+    travelling = true;
+    const target = targetRaw === 'home' ? home : targetRaw;
+    const p = world.players[author];
+    if (p && world.cells[key(p.x, p.y)]?.kind === 'door') {
+      const safeX = Math.max(1, p.x - 1);
+      if (canStep(world, p.x, p.y, safeX - p.x, 0)) {
+        send('MOVE', { x: safeX, y: p.y });
+      }
+    }
+    void persistPending(true).then(() => {
+      const url = new URL(window.location.href);
+      url.hash = '';
+      if (target === home) url.searchParams.delete('room');
+      else url.searchParams.set('room', target);
+      window.location.assign(url.toString());
+    });
   };
 
   // ───────────── acciones ─────────────
@@ -415,13 +282,25 @@ async function boot() {
 
   const roomSummary = (): InspectorModel => {
     const all = room.allEntries();
-    return { title: `sala ${roomId}`, summary: [`${all.length} eventos`, `${Object.keys(world.players).length} jugadores`], events: all.slice(-8) };
+    return {
+      title: `sala ${roomId}`,
+      summary: [`${all.length} eventos`, `${Object.keys(world.players).length} jugadores`],
+      events: all.slice(-8),
+    };
   };
 
   const targetModel = (): InspectorModel | null => {
     const all = room.allEntries();
     const entity = hoverId ?? (selected && 'entity' in selected ? selected.entity : null);
     if (entity) {
+      if (entity.startsWith('door:')) {
+        const dest = entity.slice('door:'.length);
+        return {
+          title: `puerta → ${dest === 'home' ? 'tu sala' : dest}`,
+          summary: ['clic o camina encima para cruzar'],
+          events: [],
+        };
+      }
       const st = getEntityStats(world, entity);
       return {
         title: entity.startsWith('player:') ? `jugador ${short(entity.slice(7))}` : `objeto ${entity}`,
@@ -490,7 +369,7 @@ async function boot() {
     homeRoomId: home,
     roomId,
     visitLink: () => `${location.origin}${location.pathname}?room=${roomId}`,
-    goHome: () => void (location.search = ''),
+    goHome: () => navigateToRoom('home'),
   });
 
   const hints = document.createElement('div');
@@ -532,7 +411,7 @@ async function boot() {
     }
   });
 
-  // ───────────── interacción con el ratón ─────────────
+  // ───────────── interacción con el ratón y toque ─────────────
   attachWorldInteractions(canvas, () => rig.camera(), syncer.entityMeshes, {
     onHover: (id) => {
       hoverId = id;
@@ -540,6 +419,12 @@ async function boot() {
       refreshInspector();
     },
     onEntityClick: (id) => {
+      if (id.startsWith('door:')) {
+        const dest = id.slice('door:'.length);
+        showToast(`Viajando a ${dest === 'home' ? 'tu sala' : dest}…`);
+        navigateToRoom(dest);
+        return;
+      }
       selected = { entity: id };
       syncer.setSelected(id);
       if (world.players[author]) send('INTERACT', { kind: 'click', entityId: id });
@@ -558,6 +443,11 @@ async function boot() {
       send('PUSH', plan);
     },
     onCellClick: (x, y) => {
+      const clickedCell = world.cells[key(x, y)];
+      if (clickedCell?.kind === 'door' && clickedCell.targetRoomId) {
+        navigateToRoom(clickedCell.targetRoomId);
+        return;
+      }
       selected = { cell: { x, y } };
       syncer.setSelected(null);
       refreshInspector();
@@ -588,26 +478,19 @@ async function boot() {
       send('MOVE', { x: p.x + move[0], y: p.y + move[1] });
       return;
     }
-    const push = planPush(world, author, g.dx, g.dy); // contra un objeto libre: empujar
+    const push = planPush(world, author, g.dx, g.dy);
     if (push) {
       lastMove = now;
       send('PUSH', push);
     }
   };
 
-  // puertas: pisar una lleva a otra sala (tu sala ↔ lobby)
-  let travelling = false;
   const checkDoor = () => {
     const p = world.players[author];
     if (!p || travelling) return;
     const cell = world.cells[key(p.x, p.y)];
     if (cell?.kind !== 'door' || !cell.targetRoomId) return;
-    travelling = true;
-    const target = cell.targetRoomId === 'home' ? home : cell.targetRoomId;
-    send('MOVE', { x: p.x - 1, y: p.y }); // no dejes tu cuerpo atravesando la puerta
-    void persistPending(true).then(() => {
-      location.search = target === home ? '' : `?room=${target}`;
-    });
+    navigateToRoom(cell.targetRoomId);
   };
 
   const controller = createController([createKeyboard(), createTouchPad(), createGamepad()]);
@@ -662,7 +545,7 @@ async function boot() {
     requestAnimationFrame(tick);
   };
 
-  ensurePresence(); // offline: crea tu habitación a partir de las 24 palabras
+  ensurePresence();
   requestAnimationFrame(tick);
 }
 

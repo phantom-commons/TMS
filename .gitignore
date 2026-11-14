@@ -26,3 +26,6 @@ dist-ssr
 # Relay
 server/*.db
 server/*.db-*
+server/relay.db-shm
+server/relay.db-wal
+server/relay.db

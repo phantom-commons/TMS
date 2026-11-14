@@ -26,7 +26,6 @@ export type Syncer = {
 };
 
 function ghostGeometry(): THREE.BufferGeometry {
-  // cuerpo de fantasma: cúpula + falda ancha (revolución)
   const pts = [
     [0.0, 0.0], [0.27, 0.0], [0.31, 0.08], [0.29, 0.45], [0.24, 0.68], [0.14, 0.82], [0.0, 0.86],
   ].map(([x, y]) => new THREE.Vector2(x, y));
@@ -47,18 +46,24 @@ export function createSyncer(scene: THREE.Scene, initial: World, localId: string
   const avatarGeo = new THREE.CapsuleGeometry(0.25, 0.4, 6, 12);
   const ghostGeo = ghostGeometry();
 
-  // ---------- suelo, muros y puerta (InstancedMesh: 1 draw call por tipo) ----------
   let signature = '';
   let floorMesh: THREE.InstancedMesh | null = null;
   let floorKeys: string[] = [];
   let legacyMeshes: Array<{ mesh: THREE.Mesh; cellKey: string }> = [];
+  let doorMeshes: Array<{ id: string; mesh: THREE.Mesh }> = [];
   let baseFloor = new THREE.Color(0x2b2f3a);
   let wornFloor = new THREE.Color(0x786b4d);
   const disposables: Array<{ dispose: () => void }> = [];
   const tmp = new THREE.Matrix4();
   const tmpColor = new THREE.Color();
 
+  const selectable = new Map<string, THREE.Mesh>();
+  let hover: string | null = null;
+  let selected: string | null = null;
+
   const clearStatic = () => {
+    for (const d of doorMeshes) selectable.delete(d.id);
+    doorMeshes = [];
     staticGroup.clear();
     disposables.splice(0).forEach((d) => d.dispose());
     floorMesh = null;
@@ -82,16 +87,17 @@ export function createSyncer(scene: THREE.Scene, initial: World, localId: string
     const floors: Array<[number, number, string]> = [];
     const walls: Array<[number, number]> = [];
     const objects: Array<[number, number, string]> = [];
-    const doors: Array<[number, number]> = [];
+    const doors: Array<[number, number, string | undefined]> = [];
+
     for (const [cellKey, cell] of Object.entries(w.cells)) {
       const [xs, ys] = cellKey.split(',');
       const x = Number(xs);
       const y = Number(ys);
       if (cell.kind === 'wall') walls.push([x, y]);
-      else if (cell.kind === 'door') doors.push([x, y]);
+      else if (cell.kind === 'door') doors.push([x, y, cell.targetRoomId]);
       else {
         floors.push([x, y, cellKey]);
-        if (cell.kind === 'object') objects.push([x, y, cellKey]); // cubo v1 incrustado en el mapa
+        if (cell.kind === 'object') objects.push([x, y, cellKey]);
       }
     }
 
@@ -118,13 +124,20 @@ export function createSyncer(scene: THREE.Scene, initial: World, localId: string
     });
     staticGroup.add(wallMesh);
 
-    const geoDoor = new THREE.BoxGeometry(TILE, WALL_H, TILE * 0.4);
-    const matDoor = new THREE.MeshLambertMaterial({ color: 0x5ac4ff, emissive: 0x1b5a7a });
-    for (const [x, y] of doors) {
+    const geoDoor = new THREE.BoxGeometry(TILE, WALL_H, TILE * 0.45);
+    for (const [x, y, targetRoomId] of doors) {
+      const matDoor = new THREE.MeshLambertMaterial({ color: 0x5ac4ff, emissive: 0x1b5a7a });
       const m = new THREE.Mesh(geoDoor, matDoor);
       m.position.set(x + 0.5, WALL_H / 2, y + 0.5);
       m.castShadow = true;
+      const doorId = `door:${targetRoomId ?? 'lobby'}`;
+      m.userData.targetId = doorId;
+      m.userData.doorTarget = targetRoomId ?? 'lobby';
+      m.userData.doorPos = { x, y };
       staticGroup.add(m);
+      selectable.set(doorId, m);
+      doorMeshes.push({ id: doorId, mesh: m });
+      disposables.push(matDoor);
     }
 
     const geoLegacy = new THREE.BoxGeometry(TILE * 0.6, TILE * 0.6, TILE * 0.6);
@@ -135,29 +148,30 @@ export function createSyncer(scene: THREE.Scene, initial: World, localId: string
       staticGroup.add(m);
       legacyMeshes.push({ mesh: m, cellKey: k });
     }
-    disposables.push(geoFloor, matFloor, geoWall, matWall, geoDoor, matDoor, geoLegacy, floorMesh, wallMesh);
+    disposables.push(geoFloor, matFloor, geoWall, matWall, geoDoor, geoLegacy, floorMesh, wallMesh);
   };
 
-  // ---------- avatares y objetos ----------
   type Avatar = { mesh: THREE.Mesh; target: THREE.Vector3; ghost: boolean; phase: number };
   const avatars = new Map<string, Avatar>();
   const entities = new Map<string, THREE.Mesh>();
-  const selectable = new Map<string, THREE.Mesh>();
-  let hover: string | null = null;
-  let selected: string | null = null;
   let hideSelf = false;
   let time = 0;
   let floorTick = 0;
 
-  const colorFor = (id: string) => id === localId
-    ? new THREE.Color(0x9b7bff)
-    : new THREE.Color().setHSL((parseInt(id.slice(0, 6), 16) % 360) / 360, 0.6, 0.6);
+  const colorFor = (id: string) =>
+    id === localId
+      ? new THREE.Color(0x9b7bff)
+      : new THREE.Color().setHSL((parseInt(id.slice(0, 6), 16) % 360) / 360, 0.6, 0.6);
 
   const update = (w: World, dt: number, pres: Presence) => {
     time += dt;
     if (sigOf(w) !== signature) buildStatic(w);
 
-    // desgaste del suelo por visitas (≈4 veces por segundo)
+    for (const d of doorMeshes) {
+      const mat = d.mesh.material as THREE.MeshLambertMaterial;
+      mat.emissive.setHex(hover === d.id ? 0x3898c8 : 0x1b5a7a);
+    }
+
     floorTick += dt;
     if (floorMesh && floorTick > 0.25) {
       floorTick = 0;
@@ -180,7 +194,7 @@ export function createSyncer(scene: THREE.Scene, initial: World, localId: string
         mesh.userData.targetId = `player:${id}`;
         scene.add(mesh);
         selectable.set(`player:${id}`, mesh);
-        a = { mesh, target: mesh.position.clone(), ghost: false, phase: Math.random() * 6 };
+        a = { mesh, target: mesh.position.clone(), ghost: false, phase: (parseInt(id.slice(0, 4), 16) % 60) / 10 };
         avatars.set(id, a);
       }
       const ghost = state === 'ghost';
