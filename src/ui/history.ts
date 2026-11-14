@@ -1,8 +1,11 @@
 import type { LogEntry } from '../sim/log';
-import { getEventTime } from '../sim/history';
 
 function shortAuthor(author: string): string {
   return `${author.slice(0, 8)}…${author.slice(-4)}`;
+}
+
+function eventTime(entry: LogEntry): string {
+  return new Date(entry.hlc.t).toLocaleString();
 }
 
 export function showHistoryPanel(title: string, entries: readonly LogEntry[], summary: string[] = []): void {
@@ -41,7 +44,7 @@ export function showHistoryPanel(title: string, entries: readonly LogEntry[], su
     const type = document.createElement('strong');
     type.textContent = entry.type;
     const detail = document.createElement('span');
-    detail.textContent = `${shortAuthor(entry.author)} · ${getEventTime(entry)} · ${JSON.stringify(entry.payload)}`;
+    detail.textContent = `${shortAuthor(entry.author)} · ${eventTime(entry)} · ${JSON.stringify(entry.payload)}`;
     item.append(type, detail);
     list.append(item);
   }

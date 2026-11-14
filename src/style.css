@@ -161,3 +161,79 @@ body {
 .login-card .check { display: flex; gap: 8px; align-items: center; font-size: 13px; color: #aaa; }
 .login-card .check input { width: auto; padding: 0; }
 .login-card button.secondary { background: transparent; color: #e0e0e0; border: 1px solid #2b2f3a; }
+/* Local wall clock: presentation-only, never written to Room Log. */
+.local-clock {
+  position: fixed;
+  top: 18px;
+  left: 18px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 11px;
+  color: #e7e9f0;
+  background: rgba(16, 19, 26, 0.62);
+  border: 1px solid rgba(120, 130, 150, 0.22);
+  border-radius: 9px;
+  backdrop-filter: blur(12px);
+  font: 11px/1.35 ui-monospace, SFMono-Regular, Consolas, monospace;
+  pointer-events: none;
+}
+.local-clock strong { font-size: 17px; font-weight: 600; letter-spacing: .04em; }
+.local-clock span { color: #9ba3b4; text-transform: capitalize; }
+
+.radial-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(5, 7, 11, .56);
+  backdrop-filter: blur(7px);
+  font-family: system-ui, sans-serif;
+}
+.radial-panel {
+  width: min(520px, calc(100vw - 32px));
+  padding: 18px;
+  color: #e8e9ee;
+  background: rgba(20, 23, 31, .97);
+  border: 1px solid #3a4050;
+  border-radius: 20px;
+  box-shadow: 0 24px 80px rgba(0,0,0,.55);
+}
+.radial-header, .radial-subhead { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.radial-header small { color:#9b7bff; letter-spacing:.14em; font-size:10px; }
+.radial-header h2 { margin:3px 0 0; font-size:20px; font-weight:600; }
+.radial-close, .radial-subhead button { border:1px solid #414859; border-radius:9px; color:#ddd; background:#262b36; padding:6px 10px; cursor:pointer; }
+.radial-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; margin-top:18px; }
+.radial-grid button, .radial-options button, .radial-subview > button { display:flex; flex-direction:column; align-items:flex-start; gap:5px; min-height:76px; padding:12px; color:#e8e9ee; text-align:left; background:#252a35; border:1px solid #3a4050; border-radius:12px; cursor:pointer; }
+.radial-grid button:hover, .radial-options button:hover, .radial-subview > button:hover { border-color:#9b7bff; background:#2c3040; }
+.radial-grid button > span { color:#b8a7ff; font-size:20px; }
+.radial-grid button b { font-size:13px; }
+.radial-grid button small, .radial-note { color:#9ba3b4; font-size:11px; }
+.radial-subview { margin-top:14px; padding-top:14px; border-top:1px solid #343947; }
+.radial-subhead { margin-bottom:10px; }
+.radial-options { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
+.radial-options button { min-height:54px; justify-content:center; font-size:12px; }
+.radial-subview > button { min-height:auto; width:100%; margin-top:8px; }
+.radial-phrase { max-height:150px; overflow:auto; white-space:pre-wrap; color:#d9d2ff; background:#11141b; border:1px solid #343947; border-radius:8px; padding:10px; font-size:12px; }
+.radial-subview .danger { color:#ff9c9c; }
+
+/* Inspector / Room Log: fixed, subdued bottom-left surface. */
+.history-panel {
+  top: auto;
+  right: auto;
+  left: 16px;
+  bottom: 16px;
+  width: min(360px, calc(100vw - 32px));
+  max-height: min(48vh, 420px);
+  background: rgba(16, 19, 26, .82);
+  border-color: rgba(120, 130, 150, .28);
+  backdrop-filter: blur(10px);
+}
+@media (max-width: 560px) {
+  .local-clock { top: 12px; left: 12px; }
+  .radial-options { grid-template-columns:1fr; }
+  .history-panel { left:8px; bottom:8px; width:calc(100vw - 16px); max-height:42vh; }
+}

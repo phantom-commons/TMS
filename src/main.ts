@@ -7,8 +7,11 @@ import { createGamepad } from './input/gamepad';
 import { createScene } from './render/scene';
 import { createSyncer } from './render/sync';
 import { ensureIdentity } from './ui/login';
-import { attachMenu } from './ui/menu';
-import { attachExportButton } from './ui/export';
+import { attachMenu, getInspectorMode, type InspectorMode } from './ui/menu';
+import { attachLocalClock } from './ui/clock';
+import { showHistoryPanel } from './ui/history';
+import { getCellHistory, getEntityHistory, getAuthorHistory } from './sim/history';
+import { attachWorldInteractions } from './render/interactions';
 import { shortPubkey } from './identity/keys';
 import { HLClock } from './sim/hlc';
 import { bytesToHex } from './sim/hash';
@@ -30,8 +33,8 @@ async function boot() {
   const identity = await ensureIdentity();
   const author = bytesToHex(identity.publicKey);
   console.log('identity:', identity.username, shortPubkey(identity.publicKey));
-  attachMenu(identity);
-  //attachExportButton(identity);
+  const detachClock = attachLocalClock();
+  window.addEventListener('beforeunload', detachClock, { once: true });
 
   const roomId = new URLSearchParams(location.search).get('room') ?? 'lobby';
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(roomId)) throw new Error('room inválida');
@@ -56,8 +59,55 @@ async function boot() {
 
   const canvas = document.getElementById('app') as HTMLCanvasElement | null;
   if (!canvas) throw new Error('missing canvas#app');
-  const { scene, camera, renderer } = createScene(canvas, ROOM_W, ROOM_H);
+  const { scene, renderer, cameraRig } = createScene(canvas, ROOM_W, ROOM_H);
   const syncer = createSyncer(scene, world, author);
+
+  let inspectorMode: InspectorMode = getInspectorMode();
+  const openRoomLog = () => {
+    const entries = room.allEntries();
+    const authors = new Set(entries.map((entry) => entry.author));
+    showHistoryPanel(`Room Log · ${roomId}`, entries, [
+      `${entries.length} eventos`, `${authors.size} autores`, `rseq ${room.lastRseq}`,
+    ]);
+  };
+  const updateInspectorMode = (mode: InspectorMode) => {
+    inspectorMode = mode;
+    const panel = document.getElementById('history-panel');
+    if (mode === 'off') panel?.remove();
+    if (mode === 'always' && !panel) openRoomLog();
+  };
+  attachMenu(identity, {
+    onCameraChange: (mode) => cameraRig.setMode(mode),
+    onRoomLog: openRoomLog,
+    onInspectorChange: updateInspectorMode,
+    onOpenLab: () => {
+      const panel = document.createElement('aside');
+      panel.className = 'history-panel';
+      panel.innerHTML = '<header><strong>Three.js Lab</strong><button type="button" aria-label="Cerrar">×</button></header><p>El acceso está reservado en el HUD. El laboratorio aislado se añadirá como módulo independiente para no alterar esta habitación.</p>';
+      panel.querySelector('button')?.addEventListener('click', () => panel.remove());
+      document.body.append(panel);
+    },
+  });
+
+  attachWorldInteractions(canvas, () => cameraRig.getCamera(), syncer.entityMeshes, {
+    onEntityClick: (entityId) => {
+      if (inspectorMode === 'off') return;
+      if (entityId.startsWith('player:')) {
+        const playerId = entityId.slice('player:'.length);
+        showHistoryPanel(`Visitante · ${playerId.slice(0, 8)}`, getAuthorHistory(world, room.allEntries(), playerId));
+      } else {
+        showHistoryPanel(`Objeto · ${entityId}`, getEntityHistory(world, room.allEntries(), entityId));
+      }
+    },
+    onEntityDrop: (entityId, x, y) => {
+      if (inspectorMode !== 'off') showHistoryPanel(`Soltar · ${entityId}`, getEntityHistory(world, room.allEntries(), entityId), [`Destino ${x}, ${y}`, 'El gesto de soltar aún no emite DROP en esta versión']);
+    },
+    onCellClick: (x, y) => {
+      if (inspectorMode === 'off') return;
+      showHistoryPanel(`Celda · ${x}, ${y}`, getCellHistory(world, room.allEntries(), x, y));
+    },
+  });
+  if (inspectorMode === 'always') openRoomLog();
 
   let ready = false; // conectado y sincronizado
 
@@ -152,7 +202,7 @@ async function boot() {
     const v = controller.read();
     if (v.dx !== 0 || v.dy !== 0) step(v.dx, v.dy);
     syncer.update(world, dt);
-    renderer.render(scene, camera);
+    renderer.render(scene, cameraRig.getCamera());
     requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);

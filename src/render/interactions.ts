@@ -8,7 +8,7 @@ export type WorldInteractionHandlers = {
 
 export function attachWorldInteractions(
   canvas: HTMLCanvasElement,
-  camera: THREE.Camera,
+  camera: THREE.Camera | (() => THREE.Camera),
   getEntityMeshes: () => ReadonlyMap<string, THREE.Mesh>,
   handlers: WorldInteractionHandlers,
 ): () => void {
@@ -21,7 +21,7 @@ export function attachWorldInteractions(
   const setRay = (clientX: number, clientY: number) => {
     const rect = canvas.getBoundingClientRect();
     ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
-    raycaster.setFromCamera(ndc, camera);
+    raycaster.setFromCamera(ndc, typeof camera === 'function' ? camera() : camera);
   };
 
   const cellAt = (clientX: number, clientY: number): { x: number; y: number } | null => {
