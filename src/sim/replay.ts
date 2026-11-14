@@ -37,6 +37,7 @@ function ensureEntityStats(world: World, id: string): EntityStats {
     clicksSinceLastMove: 0,
     lastMovedAt: null,
     uniqueActors: [],
+effects: [],
   });
 }
 

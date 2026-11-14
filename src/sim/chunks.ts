@@ -5,7 +5,7 @@ export type ChunkCoord = { cx: number; cz: number };
 export type Chunk = {
   cx: number;
   cz: number;
-  cells: Record<string, { kind: 'floor' | 'wall' | 'object' }>;
+  cells: Record<string, { kind: 'floor' | 'wall' | 'object' | 'door' }>;
 };
 
 // Genera una clave única para el mapa de chunks cargados (ej: "2,-1")

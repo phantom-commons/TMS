@@ -553,3 +553,36 @@ boot().catch((e) => {
   console.error('boot failed:', e);
   document.body.innerHTML = `<pre style="color:#ff6b6b;padding:24px;font-family:monospace">boot failed:\n${e}</pre>`;
 });
+
+import { createRoomDevPanel } from './ui/room-dev-panel';
+import { DEFAULT_POLICY, ROOM_CONSTANTS, manifestFromWorld } from './sim/manifest';
+
+// ... dentro de boot(), después de createScene:
+
+const roomDev = createRoomDevPanel();
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'F3' && e.shiftKey) {   // Shift+F3 abre el panel
+    roomDev.setVisible(roomDevHiddenToggle());
+  }
+});
+
+let roomDevHidden = true;
+const roomDevHiddenToggle = () => (roomDevHidden = !roomDevHidden);
+
+// Refresca el panel en cada refresh() del mundo
+const baseRefresh = refresh;
+const refreshWithDev = () => {
+  baseRefresh();
+  if (!roomDevHidden) {
+    roomDev.update({
+      manifest: manifestFromWorld(world),
+      policy: DEFAULT_POLICY,
+      constants: ROOM_CONSTANTS,
+      allowedEvents: ['INIT','ENTER','MOVE','PLACE','PICK_UP','DROP','PUSH','LOCK','UNLOCK','INTERACT'],
+      relayVerbCount: 10,
+      replayVerbCount: 10,
+    });
+  }
+};
+// Reemplaza `refresh()` por `refreshWithDev()` en todos los sitios del archivo
