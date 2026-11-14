@@ -50,5 +50,5 @@ export function getCellStats(world: World, x: number, y: number) {
 }
 
 export function getEventTime(entry: LogEntry): string {
-  return new Date(entry.hlc.t).toLocaleString();
+  return new (entry.hlc.t).toLocaleString();
 }
