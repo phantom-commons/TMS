@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "test": "vitest run",
-    "relay": "tsx server/index.ts"
+    "relay": "tsx server/index.ts",
+    "check": "tsc && tsc -p server/tsconfig.json",
+    "relay:watch": "tsx watch server/index.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

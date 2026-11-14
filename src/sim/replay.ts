@@ -13,6 +13,7 @@ import {
   type World,
   type WorldEntity,
 } from './world';
+import { generatePillars, homeRoomId, isHomeRoomId, isSeed } from './worldgen';
 
 function ensureCellActivity(world: World, cellKey: string): CellActivity {
   return (world.cellActivity[cellKey] ??= {
@@ -337,7 +338,16 @@ export function replay(entries: LogEntry[]): World {
       if (!validSpawn(spawn.x) || !validSpawn(spawn.y)) throw new Error('INIT has invalid spawn coordinates');
       const sx = spawn.x;
       const sy = spawn.y;
-      world = createGenesisRoom(entry.roomId, { x: sx, y: sy }, { legacyCube: entry.version !== 2 });
+      if (isHomeRoomId(entry.roomId) && homeRoomId(entry.author) !== entry.roomId) {
+        throw new Error('INIT of a home room must be signed by its owner');
+      }
+      const seed = isSeed(payload?.seed) ? payload.seed : undefined;
+      const doorTo = typeof payload?.doorTo === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(payload.doorTo) ? payload.doorTo : undefined;
+      world = createGenesisRoom(entry.roomId, { x: sx, y: sy }, {
+        legacyCube: entry.version !== 2,
+        ...(seed ? { seed, pillars: generatePillars(seed, { x: sx, y: sy }) } : {}),
+        ...(doorTo ? { doorTo } : {}),
+      });
       if (world.cells[key(sx, sy)]?.kind !== 'floor') throw new Error('INIT spawn must be a walkable floor cell');
       world.players[entry.author] = { x: sx, y: sy, hlc: entry.hlc };
       recordEvent(world, entry, { entityId: playerEntityId(entry.author), to: { x: sx, y: sy }, visit: true });

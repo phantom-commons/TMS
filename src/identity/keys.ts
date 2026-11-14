@@ -7,14 +7,6 @@ import { wordlist } from '@scure/bip39/wordlists/english.js';
 // noble-ed25519 v2 requiere sha512 sync inyectado
 ed.hashes.sha512 = sha512;
 
-// Web Crypto expects an ArrayBuffer-backed BufferSource. Copying also avoids
-// passing a possible SharedArrayBuffer through newer typed-array typings.
-function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  const copy = new Uint8Array(bytes.byteLength);
-  copy.set(bytes);
-  return copy.buffer;
-}
-
 export type Identity = {
   username: string;
   privateKey: Uint8Array;
@@ -63,17 +55,13 @@ export async function encryptSeed(
   const keyBytes = await deriveKey(password, salt);
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
-    toArrayBuffer(keyBytes),
+    keyBytes,
     { name: 'AES-GCM' },
     false,
     ['encrypt'],
   );
   const ciphertext = new Uint8Array(
-    await crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv: toArrayBuffer(iv) },
-      cryptoKey,
-      toArrayBuffer(privateKey),
-    ),
+    await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, cryptoKey, privateKey),
   );
   const publicKey = ed.getPublicKey(privateKey);
   return {
@@ -95,16 +83,16 @@ export async function decryptSeed(
   const keyBytes = await deriveKey(password, salt);
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
-    toArrayBuffer(keyBytes),
+    keyBytes,
     { name: 'AES-GCM' },
     false,
     ['decrypt'],
   );
   const privateKey = new Uint8Array(
     await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: toArrayBuffer(stored.iv) },
+      { name: 'AES-GCM', iv: stored.iv },
       cryptoKey,
-      toArrayBuffer(stored.encryptedSeed),
+      stored.encryptedSeed,
     ),
   );
   const publicKey = ed.getPublicKey(privateKey);
@@ -142,11 +130,7 @@ export async function sealWithDeviceKey(privateKey: Uint8Array, username: string
   ]);
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const encryptedSeed = new Uint8Array(
-    await crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv: toArrayBuffer(iv) },
-      deviceKey,
-      toArrayBuffer(privateKey),
-    ),
+    await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, deviceKey, privateKey),
   );
   return {
     username,
@@ -161,11 +145,7 @@ export async function sealWithDeviceKey(privateKey: Uint8Array, username: string
 export async function openWithDeviceKey(stored: StoredIdentity): Promise<Identity> {
   if (!stored.deviceKey) throw new Error('sin clave de dispositivo');
   const privateKey = new Uint8Array(
-    await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: toArrayBuffer(stored.iv) },
-      stored.deviceKey,
-      toArrayBuffer(stored.encryptedSeed),
-    ),
+    await crypto.subtle.decrypt({ name: 'AES-GCM', iv: stored.iv }, stored.deviceKey, stored.encryptedSeed),
   );
   return { username: stored.username, privateKey, publicKey: ed.getPublicKey(privateKey) };
 }

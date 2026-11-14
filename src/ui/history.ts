@@ -1,11 +1,10 @@
 import type { LogEntry } from '../sim/log';
+import { getEventTime } from '../sim/history';
+
+const MAX_ROWS = 500;
 
 function shortAuthor(author: string): string {
   return `${author.slice(0, 8)}…${author.slice(-4)}`;
-}
-
-function eventTime(entry: LogEntry): string {
-  return new Date(entry.hlc.t).toLocaleString();
 }
 
 export function showHistoryPanel(title: string, entries: readonly LogEntry[], summary: string[] = []): void {
@@ -34,17 +33,17 @@ export function showHistoryPanel(title: string, entries: readonly LogEntry[], su
 
   const count = document.createElement('p');
   count.className = 'history-count';
-  count.textContent = `${entries.length} eventos en el historial`;
+  count.textContent = `${entries.length} eventos en el historial${entries.length > MAX_ROWS ? ` (mostrando los últimos ${MAX_ROWS})` : ''}`;
   panel.append(count);
 
   const list = document.createElement('ol');
   list.className = 'history-list';
-  for (const entry of [...entries].reverse()) {
+  for (const entry of [...entries].reverse().slice(0, MAX_ROWS)) {
     const item = document.createElement('li');
     const type = document.createElement('strong');
     type.textContent = entry.type;
     const detail = document.createElement('span');
-    detail.textContent = `${shortAuthor(entry.author)} · ${eventTime(entry)} · ${JSON.stringify(entry.payload)}`;
+    detail.textContent = `${shortAuthor(entry.author)} · ${getEventTime(entry)} · ${JSON.stringify(entry.payload)}`;
     item.append(type, detail);
     list.append(item);
   }

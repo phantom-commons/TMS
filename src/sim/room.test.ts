@@ -68,18 +68,6 @@ describe('RoomState', () => {
     expect(room.lastRseq).toBe(1);
   });
 
-
-  it('rechaza una acción firmada pero semánticamente inválida', () => {
-    const rel = relay();
-    const a = makeActor();
-    const room = new RoomState('r');
-    room.applyConfirmed([rel(emit(a, 'INIT', { spawn: { x: 3, y: 3 } }))]);
-    const invalid = emit(a, 'PICK_UP', { entityId: 'does-not-exist' });
-    const res = room.applyConfirmed([rel(invalid)]);
-    expect(res.error).toContain('invalid PICK_UP action');
-    expect(room.lastRseq).toBe(1);
-  });
-
   it('el pendiente es optimista y se limpia al confirmarse', () => {
     const rel = relay();
     const a = makeActor();

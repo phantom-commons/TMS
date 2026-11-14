@@ -1,7 +1,7 @@
 import { openDB, type IDBPDatabase } from 'idb';
 
 const DB_NAME = 'sim';
-const VERSION = 4;
+const VERSION = 7;
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -22,6 +22,10 @@ export function getDB(): Promise<IDBPDatabase> {
             if (old) await Promise.all(old.map((e) => store.put(e, e.seq)));
           }
         }
+
+        // v5: caché de salas confirmadas por el relay + acciones propias aún sin confirmar (modo offline)
+        if (!db.objectStoreNames.contains('room')) db.createObjectStore('room');
+        if (!db.objectStoreNames.contains('pending')) db.createObjectStore('pending');
       },
     });
   }

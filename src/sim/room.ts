@@ -11,9 +11,9 @@ export class RoomState {
   private confirmed: RelayEntry[] = [];
   private pending: LogEntry[] = [];
   private heads = new Map<string, { seq: number; hash: string }>();
-  private cache: World | null = null;
   private confirmedWorld: World | null = null;
-  private dirty = true;
+  // Confirmadas + pendientes. Se construye una vez y se actualiza incrementalmente con cada acción propia.
+  private optimistic: World | null = null;
 
   constructor(roomId: string) {
     this.roomId = roomId;
@@ -33,6 +33,10 @@ export class RoomState {
 
   allEntries(): LogEntry[] {
     return [...this.confirmed.map((item) => item.entry), ...this.pending];
+  }
+
+  pendingList(): readonly LogEntry[] {
+    return this.pending;
   }
 
   get pendingCount(): number {
@@ -81,7 +85,7 @@ export class RoomState {
       this.pending = this.pending.filter((p) => p.hash !== e.hash);
       accepted.push(it);
     }
-    if (accepted.length) this.dirty = true;
+    if (accepted.length) this.optimistic = null;
     return { accepted };
   }
 
@@ -104,25 +108,47 @@ export class RoomState {
 
   addPending(entry: LogEntry): void {
     this.pending.push(entry);
-    this.dirty = true;
+    if (this.optimistic) {
+      applyEntry(this.optimistic, entry); // semánticamente inválida: se ignora (el relay la rechazará)
+    } else if (this.pending.length === 1) {
+      // primera pendiente: parte de una copia del mundo confirmado
+      try {
+        if (this.confirmedWorld) {
+          this.optimistic = structuredClone(this.confirmedWorld);
+          applyEntry(this.optimistic, entry);
+        } else if (entry.type === 'INIT') {
+          this.optimistic = replay([entry]);
+        }
+      } catch {
+        this.optimistic = null;
+      }
+    } else {
+      this.optimistic = null; // se reconstruye en world()
+    }
   }
 
   dropPending(): void {
     if (this.pending.length === 0) return;
     this.pending = [];
-    this.dirty = true;
+    this.optimistic = null;
   }
 
   // Confirmadas + pendientes (optimista). null si la room aún no existe.
   world(): World | null {
-    if (!this.dirty) return this.cache;
-    if (this.pending.length === 0) {
-      this.cache = this.confirmedWorld;
-    } else {
-      const all = [...this.confirmed.map((c) => c.entry), ...this.pending];
-      this.cache = all.length > 0 && all[0].type === 'INIT' ? replay(all) : null;
+    if (this.pending.length === 0) return this.confirmedWorld;
+    if (!this.optimistic) {
+      try {
+        if (this.confirmedWorld) {
+          const w = structuredClone(this.confirmedWorld);
+          for (const p of this.pending) applyEntry(w, p);
+          this.optimistic = w;
+        } else if (this.pending[0].type === 'INIT') {
+          this.optimistic = replay(this.pending);
+        }
+      } catch {
+        this.optimistic = null;
+      }
     }
-    this.dirty = false;
-    return this.cache;
+    return this.optimistic;
   }
 }

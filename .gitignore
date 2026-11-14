@@ -22,4 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-server/relay.db*
+
+# Relay
+server/*.db
+server/*.db-*

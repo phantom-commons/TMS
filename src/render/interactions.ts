@@ -4,11 +4,13 @@ export type WorldInteractionHandlers = {
   onEntityClick: (entityId: string) => void;
   onEntityDrop: (entityId: string, x: number, y: number) => void;
   onCellClick: (x: number, y: number) => void;
+  /** objeto/jugador bajo el cursor (null si ninguno) */
+  onHover?: (entityId: string | null) => void;
 };
 
 export function attachWorldInteractions(
   canvas: HTMLCanvasElement,
-  camera: THREE.Camera | (() => THREE.Camera),
+  getCamera: () => THREE.Camera,
   getEntityMeshes: () => ReadonlyMap<string, THREE.Mesh>,
   handlers: WorldInteractionHandlers,
 ): () => void {
@@ -20,8 +22,10 @@ export function attachWorldInteractions(
 
   const setRay = (clientX: number, clientY: number) => {
     const rect = canvas.getBoundingClientRect();
-    ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
-    raycaster.setFromCamera(ndc, typeof camera === 'function' ? camera() : camera);
+    // con el puntero bloqueado (primera persona) se apunta al centro de la pantalla
+    if (document.pointerLockElement === canvas) ndc.set(0, 0);
+    else ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    raycaster.setFromCamera(ndc, getCamera());
   };
 
   const cellAt = (clientX: number, clientY: number): { x: number; y: number } | null => {
@@ -64,12 +68,29 @@ export function attachWorldInteractions(
     }
   };
 
+  let hovered: string | null = null;
+  const onPointerMove = (event: PointerEvent) => {
+    if (!handlers.onHover || event.pointerType === 'touch') return;
+    setRay(event.clientX, event.clientY);
+    const picked = raycaster.intersectObjects([...getEntityMeshes().values()], false)[0]?.object as THREE.Mesh | undefined;
+    const id = typeof picked?.userData.targetId === 'string'
+      ? picked.userData.targetId
+      : typeof picked?.userData.entityId === 'string' ? picked.userData.entityId : null;
+    if (id !== hovered) {
+      hovered = id;
+      canvas.style.cursor = id ? 'pointer' : '';
+      handlers.onHover(id);
+    }
+  };
+
   const onPointerCancel = () => { down = null; };
   canvas.addEventListener('pointerdown', onPointerDown);
+  canvas.addEventListener('pointermove', onPointerMove);
   window.addEventListener('pointerup', onPointerUp);
   window.addEventListener('pointercancel', onPointerCancel);
   return () => {
     canvas.removeEventListener('pointerdown', onPointerDown);
+    canvas.removeEventListener('pointermove', onPointerMove);
     window.removeEventListener('pointerup', onPointerUp);
     window.removeEventListener('pointercancel', onPointerCancel);
   };

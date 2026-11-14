@@ -72,6 +72,8 @@ export type World = {
   entities: Record<string, WorldEntity>;
   inventories: Record<string, string[]>;
   spawn: { x: number; y: number };
+  /** Semilla de generación (hex). null en salas antiguas sin generación. */
+  seed: string | null;
 
   // Rebuildable projections. Each signed event is represented once in eventRefs;
   // the maps below contain integer pointers, never copied event payloads.
@@ -94,7 +96,7 @@ const GENESIS_HLC: HLC = { t: 0, c: 0 };
 export function createGenesisRoom(
   roomId = 'room-genesis',
   spawn = { x: 3, y: 3 },
-  options: { legacyCube?: boolean } = { legacyCube: true },
+  options: { legacyCube?: boolean; seed?: string; doorTo?: string; pillars?: Array<{ x: number; y: number }> } = { legacyCube: true },
 ): World {
   const cells: Record<string, Cell> = {};
   for (let y = 0; y < ROOM_H; y++) {
@@ -106,10 +108,11 @@ export function createGenesisRoom(
 
   // Old v1 rooms had a cube embedded in the tile map. Keep it visible and solid
   // when replaying those logs; new v2 rooms create movable cubes with PLACE events.
+  for (const p of options.pillars ?? []) cells[key(p.x, p.y)] = { kind: 'wall', hlc: GENESIS_HLC };
   if (options.legacyCube) cells[key(6, 5)] = { kind: 'object', hlc: GENESIS_HLC };
   cells[key(ROOM_W - 1, 7)] = {
     kind: 'door',
-    targetRoomId: 'room-demo',
+    targetRoomId: options.doorTo ?? 'room-demo',
     hlc: GENESIS_HLC,
   };
 
@@ -121,6 +124,7 @@ export function createGenesisRoom(
     entities: {},
     inventories: {},
     spawn,
+    seed: options.seed ?? null,
     eventRefs: [],
     eventIndex: {},
     entityHistory: {},
