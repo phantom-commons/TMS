@@ -142,3 +142,22 @@ body {
 .history-list li strong,
 .history-list li span { display: block; }
 .history-list li span { color: #9ba3b4; font-size: 11px; }
+
+.login-card textarea {
+  padding: 10px 12px;
+  background: #111318;
+  border: 1px solid #2b2f3a;
+  border-radius: 6px;
+  color: #e0e0e0;
+  font-size: 14px;
+  outline: none;
+  resize: none;
+  font-family: inherit;
+}
+.login-card textarea:focus { border-color: #9b7bff; }
+.login-card .tabs { display: flex; gap: 6px; }
+.login-card .tabs .tab { flex: 1; background: #111318; color: #aaa; border: 1px solid #2b2f3a; }
+.login-card .tabs .tab.active { background: #9b7bff; color: #111318; border-color: #9b7bff; }
+.login-card .check { display: flex; gap: 8px; align-items: center; font-size: 13px; color: #aaa; }
+.login-card .check input { width: auto; padding: 0; }
+.login-card button.secondary { background: transparent; color: #e0e0e0; border: 1px solid #2b2f3a; }

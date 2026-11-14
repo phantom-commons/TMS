@@ -7,6 +7,7 @@ import { createGamepad } from './input/gamepad';
 import { createScene } from './render/scene';
 import { createSyncer } from './render/sync';
 import { ensureIdentity } from './ui/login';
+import { attachMenu } from './ui/menu';
 import { attachExportButton } from './ui/export';
 import { shortPubkey } from './identity/keys';
 import { HLClock } from './sim/hlc';
@@ -29,7 +30,8 @@ async function boot() {
   const identity = await ensureIdentity();
   const author = bytesToHex(identity.publicKey);
   console.log('identity:', identity.username, shortPubkey(identity.publicKey));
-  attachExportButton(identity);
+  attachMenu(identity);
+  //attachExportButton(identity);
 
   const roomId = new URLSearchParams(location.search).get('room') ?? 'lobby';
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(roomId)) throw new Error('room inválida');

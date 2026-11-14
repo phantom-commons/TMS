@@ -16,10 +16,11 @@ export type Identity = {
 export type StoredIdentity = {
   username: string;
   publicKeyHex: string;
-  salt: Uint8Array;
+  createdAt: number;
   iv: Uint8Array;
   encryptedSeed: Uint8Array;
-  createdAt: number;
+  salt?: Uint8Array;        // identidad protegida con contraseña
+  deviceKey?: CryptoKey;    // sesión recordada en este dispositivo
 };
 
 const ARGON2 = {
@@ -77,6 +78,9 @@ export async function decryptSeed(
   stored: StoredIdentity,
   password: string,
 ): Promise<Identity> {
+  const salt = stored.salt;
+  if (!salt) throw new Error('identidad sin contraseña');
+  const keyBytes = await deriveKey(password, salt);
   const keyBytes = await deriveKey(password, stored.salt);
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
@@ -119,4 +123,30 @@ export function hexToBytes(hex: string): Uint8Array {
 export function shortPubkey(pubkey: Uint8Array): string {
   const hex = bytesToHex(pubkey);
   return `${hex.slice(0, 4)}…${hex.slice(-4)}`;
+}
+export async function sealWithDeviceKey(privateKey: Uint8Array, username: string): Promise<StoredIdentity> {
+  const deviceKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, [
+    'encrypt',
+    'decrypt',
+  ]);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encryptedSeed = new Uint8Array(
+    await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, deviceKey, privateKey),
+  );
+  return {
+    username,
+    publicKeyHex: bytesToHex(ed.getPublicKey(privateKey)),
+    createdAt: Date.now(),
+    iv,
+    encryptedSeed,
+    deviceKey,
+  };
+}
+
+export async function openWithDeviceKey(stored: StoredIdentity): Promise<Identity> {
+  if (!stored.deviceKey) throw new Error('sin clave de dispositivo');
+  const privateKey = new Uint8Array(
+    await crypto.subtle.decrypt({ name: 'AES-GCM', iv: stored.iv }, stored.deviceKey, stored.encryptedSeed),
+  );
+  return { username: stored.username, privateKey, publicKey: ed.getPublicKey(privateKey) };
 }
