@@ -3,7 +3,7 @@ import * as THREE from 'three';
 export type WorldInteractionHandlers = {
   onEntityClick: (targetId: string) => void;
   onEntityPickup: (entityId: string) => boolean;
-  onEntityDrop: (entityId: string, x: number, y: number) => boolean;
+  onEntityDrop: (entityId: string, x: number, y: number) => void;
   onCellClick: (x: number, y: number) => void;
   onDragPreview?: (cell: { x: number; y: number } | null) => void;
   onInteractionLock?: (locked: boolean) => void;
