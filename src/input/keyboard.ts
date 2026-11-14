@@ -1,18 +1,42 @@
-export type Dir = 'up' | 'down' | 'left' | 'right';
+import { ZERO, type InputSource, type Vec } from './controller';
 
-export function attachKeyboard(onDir: (d: Dir) => void): () => void {
-  const handler = (e: KeyboardEvent) => {
-    let d: Dir | null = null;
-    if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') d = 'up';
-    else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') d = 'down';
-    else if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') d = 'left';
-    else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') d = 'right';
+const LEFT = ['ArrowLeft', 'KeyA'];
+const RIGHT = ['ArrowRight', 'KeyD'];
+const UP = ['ArrowUp', 'KeyW'];
+const DOWN = ['ArrowDown', 'KeyS'];
+const ALL = new Set([...LEFT, ...RIGHT, ...UP, ...DOWN]);
 
-    if (d) {
-      e.preventDefault();
-      onDir(d);
-    }
+const isTyping = (t: EventTarget | null) =>
+  t instanceof HTMLElement &&
+  (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+
+export function createKeyboard(): InputSource {
+  const held = new Set<string>();
+
+  const down = (e: KeyboardEvent) => {
+    if (isTyping(e.target) || !ALL.has(e.code)) return;
+    e.preventDefault();
+    held.add(e.code);
   };
-  window.addEventListener('keydown', handler);
-  return () => window.removeEventListener('keydown', handler);
+  const up = (e: KeyboardEvent) => held.delete(e.code);
+  const clear = () => held.clear();
+
+  window.addEventListener('keydown', down);
+  window.addEventListener('keyup', up);
+  window.addEventListener('blur', clear);
+
+  const any = (codes: string[]) => codes.some((c) => held.has(c));
+
+  return {
+    read(): Vec {
+      const dx = (any(RIGHT) ? 1 : 0) - (any(LEFT) ? 1 : 0);
+      const dy = (any(DOWN) ? 1 : 0) - (any(UP) ? 1 : 0);
+      return dx === 0 && dy === 0 ? ZERO : { dx, dy };
+    },
+    dispose() {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', clear);
+    },
+  };
 }

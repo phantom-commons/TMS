@@ -1,8 +1,11 @@
 import './style.css';
-import { canWalk, ROOM_W, ROOM_H } from './sim/world';
+import { canStep, ROOM_W, ROOM_H } from './sim/world';   // canWalk ya no se usa
+import { createController } from './input/controller';
+import { createKeyboard } from './input/keyboard';
+import { createTouchPad } from './input/touchpad';
+import { createGamepad } from './input/gamepad';
 import { createScene } from './render/scene';
 import { createSyncer } from './render/sync';
-import { attachKeyboard, type Dir } from './input/keyboard';
 import { ensureIdentity } from './ui/login';
 import { attachExportButton } from './ui/export';
 import { shortPubkey } from './identity/keys';
@@ -45,37 +48,37 @@ async function boot() {
   }
 
   const world = replay(entries);
-  console.log('world replayed. player:', world.players.local);
+  console.log('world replayed. player:', world.players[author]);
 
   const canvas = document.getElementById('app') as HTMLCanvasElement | null;
   if (!canvas) throw new Error('missing canvas#app');
 
   const { scene, camera, renderer } = createScene(canvas, ROOM_W, ROOM_H);
-  const syncer = createSyncer(scene, world);
+  const syncer = createSyncer(scene, world, author);
 
-  const COOLDOWN_MS = 120;
-  let lastMove = 0;
 
-  const step = (d: Dir) => {
+   let lastMove = 0;
+
+  const step = (dx: number, dy: number) => {
+    const p = world.players[author];
+    if (!p) return;
+
+    // En diagonal, si hay esquina, intenta deslizarte por cada eje.
+    const tries: Array<[number, number]> =
+      dx !== 0 && dy !== 0 ? [[dx, dy], [dx, 0], [0, dy]] : [[dx, dy]];
+    const m = tries.find(([a, b]) => canStep(world, p.x, p.y, a, b));
+    if (!m) return;
+
     const now = performance.now();
-    if (now - lastMove < COOLDOWN_MS) return;
+    const cooldown = m[0] !== 0 && m[1] !== 0 ? 170 : 120; // diagonal ≈ ×1.41
+    if (now - lastMove < cooldown) return;
     lastMove = now;
-
-    const p = world.players.local ?? { x: 3, y: 3, hlc: { t: 0, c: 0 } };
-    let nx = p.x;
-    let ny = p.y;
-    if (d === 'up') ny -= 1;
-    else if (d === 'down') ny += 1;
-    else if (d === 'left') nx -= 1;
-    else if (d === 'right') nx += 1;
-
-    if (!canWalk(world, nx, ny)) return;
 
     const prev = entries[entries.length - 1];
     const unsealed: UnsealedEntry = {
       seq: prev.seq + 1,
       type: 'MOVE',
-      payload: { x: nx, y: ny },
+      payload: { x: p.x + m[0], y: p.y + m[1] },
       author,
       hlc: clock.tick(),
       prevHash: prev.hash,
@@ -86,17 +89,20 @@ async function boot() {
     void saveLog(entries);
   };
 
-  attachKeyboard(step);
+  const controller = createController([createKeyboard(), createTouchPad(), createGamepad()]);
 
   let last = performance.now();
   const tick = (now: number) => {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
+    const v = controller.read();
+    if (v.dx !== 0 || v.dy !== 0) step(v.dx, v.dy);
     syncer.update(world, dt);
     renderer.render(scene, camera);
     requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);
+
 }
 
 boot().catch((e) => {

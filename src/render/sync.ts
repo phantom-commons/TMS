@@ -13,10 +13,9 @@ const COLORS = {
 
 export type Syncer = {
   update: (world: World, dt: number) => void;
-  playerMesh: THREE.Mesh;
 };
 
-export function createSyncer(scene: THREE.Scene, world: World): Syncer {
+export function createSyncer(scene: THREE.Scene, world: World, localId: string): Syncer {
   const group = new THREE.Group();
   scene.add(group);
 
@@ -53,23 +52,40 @@ export function createSyncer(scene: THREE.Scene, world: World): Syncer {
     group.add(mesh);
   }
 
-  const playerGeo = new THREE.CapsuleGeometry(0.25, 0.4, 6, 12);
-  const playerMat = new THREE.MeshLambertMaterial({ color: 0x9b7bff });
-  const playerMesh = new THREE.Mesh(playerGeo, playerMat);
+    const avatarGeo = new THREE.CapsuleGeometry(0.25, 0.4, 6, 12);
+  const avatars = new Map<string, { mesh: THREE.Mesh; target: THREE.Vector3 }>();
 
-  const p0 = world.players.local ?? { x: 0, y: 0, hlc: { t: 0, c: 0 } };
-  playerMesh.position.set(p0.x + 0.5, 0.55, p0.y + 0.5);
-  scene.add(playerMesh);
-
-  const target = playerMesh.position.clone();
+  // Tú: violeta. Los demás: un color estable derivado de su pubkey.
+  const colorFor = (id: string) =>
+    id === localId
+      ? new THREE.Color(0x9b7bff)
+      : new THREE.Color().setHSL((parseInt(id.slice(0, 6), 16) % 360) / 360, 0.6, 0.6);
 
   const update = (w: World, dt: number) => {
-    const pl = w.players.local;
-    if (!pl) return;
-    target.set(pl.x + 0.5, 0.55, pl.y + 0.5);
-    const t = Math.min(1, dt * 14);
-    playerMesh.position.lerp(target, t);
+    for (const [id, pl] of Object.entries(w.players)) {
+      let a = avatars.get(id);
+      if (!a) {
+        const mesh = new THREE.Mesh(
+          avatarGeo,
+          new THREE.MeshLambertMaterial({ color: colorFor(id) }),
+        );
+        mesh.position.set(pl.x + 0.5, 0.55, pl.y + 0.5);
+        scene.add(mesh);
+        a = { mesh, target: mesh.position.clone() };
+        avatars.set(id, a);
+      }
+      a.target.set(pl.x + 0.5, 0.55, pl.y + 0.5);
+      a.mesh.position.lerp(a.target, Math.min(1, dt * 14));
+    }
+
+    for (const [id, a] of avatars) {
+      if (!(id in w.players)) {
+        scene.remove(a.mesh);
+        (a.mesh.material as THREE.Material).dispose();
+        avatars.delete(id);
+      }
+    }
   };
 
-  return { update, playerMesh };
+  return { update };
 }

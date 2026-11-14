@@ -53,3 +53,15 @@ export function canWalk(world: World, x: number, y: number): boolean {
   const cell = world.cells[key(x, y)];
   return cell?.kind === 'floor' || cell?.kind === 'door';
 }
+
+export function canStep(world: World, x: number, y: number, dx: number, dy: number): boolean {
+  if (!Number.isInteger(x + dx) || !Number.isInteger(y + dy)) return false;
+  if (dx === 0 && dy === 0) return false;
+  if (Math.abs(dx) > 1 || Math.abs(dy) > 1) return false;
+  if (!canWalk(world, x + dx, y + dy)) return false;
+  // diagonal: no se corta la esquina
+  if (dx !== 0 && dy !== 0) {
+    return canWalk(world, x + dx, y) && canWalk(world, x, y + dy);
+  }
+  return true;
+}

@@ -5,7 +5,7 @@ import { GENESIS_HASH, chainHash, bytesToHex, hexToBytes } from './hash';
 
 ed.hashes.sha512 = sha512;
 
-export type LogEntryType = 'INIT' | 'MOVE' | 'PLACE' | 'DOOR' | 'NOTE';
+export type LogEntryType = 'INIT' | 'ENTER' | 'MOVE' | 'PLACE' | 'DOOR' | 'NOTE';
 
 export type LogEntry = {
   seq: number;
