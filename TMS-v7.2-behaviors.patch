@@ -1,0 +1,339 @@
+diff --git a/src/sim/log.ts b/src/sim/log.ts
+--- a/src/sim/log.ts
++++ b/src/sim/log.ts
+@@ -10,6 +10,7 @@
+   | 'INIT'
+   | 'ENTER'
+   | 'MOVE'
++  | 'POUR'
+   | 'PLACE'
+   | 'PICK_UP'
+   | 'DROP'
+diff --git a/src/sim/replay.ts b/src/sim/replay.ts
+--- a/src/sim/replay.ts
++++ b/src/sim/replay.ts
+@@ -15,4 +15,6 @@
+ import {
+   type WorldEntity,
+ } from './world';
+ import { generatePillars, homeRoomId, isHomeRoomId, isSeed } from './worldgen';
++import { contaminateEntity, contaminatePlayer, tickIfDue } from './behaviors';
++import { isMaterialId } from './materials';
+@@ -75,5 +77,15 @@
+-/** Applies one already-authenticated event. Returns false for semantically invalid actions. */
+-export function applyEntry(world: World, entry: LogEntry): boolean {
++/**
++ * Aplica un evento ya autenticado y avanza el tick determinista si el evento
++ * fue aceptado. Devuelve false para acciones semánticamente inválidas.
++ */
++export function applyEntry(world: World, entry: LogEntry): boolean {
++  const accepted = applyEntryRaw(world, entry);
++  if (accepted) tickIfDue(world, entry.hlc.t);
++  return accepted;
++}
++
++/** Transición pura evento→estado, sin el tick periódico. */
++function applyEntryRaw(world: World, entry: LogEntry): boolean {
+   const p = asObjectPayload(entry.payload);
+   if (!p) return false;
+-  const v2Only = ['PLACE', 'PICK_UP', 'DROP', 'PUSH', 'LOCK', 'UNLOCK', 'INTERACT'];
++  const v2Only = ['PLACE', 'PICK_UP', 'DROP', 'PUSH', 'LOCK', 'UNLOCK', 'INTERACT', 'POUR'];
+@@ -88,8 +100,8 @@
+     if (!spot) {
+       if (previous) world.players[entry.author] = previous;
+       return false;
+     }
+-    world.players[entry.author] = { ...spot, hlc: entry.hlc };
++    world.players[entry.author] = { ...(previous ?? {}), x: spot.x, y: spot.y, hlc: entry.hlc };
+     recordEvent(world, entry, { entityId: playerEntityId(entry.author), to: spot, visit: true });
+     return true;
+   }
+@@ -100,9 +112,32 @@
+     const dy = target.y - cur.y;
+     if (Object.entries(world.players).some(([id, player]) => id !== entry.author && player.x === target.x && player.y === target.y)) return false;
+     if (!canStep(world, cur.x, cur.y, dx, dy)) return false;
+-    world.players[entry.author] = { ...target, hlc: entry.hlc };
++    world.players[entry.author] = { ...cur, x: target.x, y: target.y, hlc: entry.hlc };
++    const destCell = world.cells[key(target.x, target.y)];
++    if (destCell) contaminatePlayer(world, entry.author, destCell);
+     recordEvent(world, entry, { entityId: playerEntityId(entry.author), from: cur, to: target, visit: true, movement: true });
+     return true;
+   }
+ 
++  if (entry.type === 'POUR') {
++    const material = p.material;
++    const ml = p.ml;
++    const target = { x: p.x, y: p.y };
++    if (!isMaterialId(material)) return false;
++    if (typeof ml !== 'number' || !Number.isFinite(ml) || ml <= 0 || ml > 100_000) return false;
++    if (!validCell(world, target)) return false;
++    if (!world.players[entry.author]) return false;
++    if (!isNearPlayer(world, entry.author, target.x, target.y)) return false;
++    const cell = world.cells[key(target.x, target.y)];
++    if (!cell) return false;
++    if (cell.liquid) {
++      if (cell.liquid.material !== material) return false; // no mezclar
++      cell.liquid.amount += ml;
++    } else {
++      cell.liquid = { material, amount: ml };
++    }
++    recordEvent(world, entry, { entityId: playerEntityId(entry.author), to: target });
++    return true;
++  }
++
+   if (entry.type === 'PLACE') {
+@@ -123,13 +158,26 @@
+     const legacyObjectTile = tile?.kind === 'object';
+     if ((!legacyObjectTile && !canWalk(world, target.x, target.y)) || entityAt(world, target.x, target.y)) return false;
+     if (p.assetHash !== undefined && (typeof p.assetHash !== 'string' || !/^[0-9a-f]{64}$/i.test(p.assetHash))) return false;
+     if (p.assetSize !== undefined && (typeof p.assetSize !== 'number' || !Number.isSafeInteger(p.assetSize) || p.assetSize < 0)) return false;
++    const isCreature = p.creature !== undefined;
++    const creaturePayload = isCreature ? parseCreaturePayload(p.creature) : null;
++    if (isCreature && !creaturePayload) return false;
+     const entity: WorldEntity = {
+       id,
+-      kind: 'object',
++      kind: isCreature ? 'creature' : 'object',
+       createdBy: entry.author,
+       location: { kind: 'room', roomId: world.roomId, x: target.x, y: target.y },
+-      blocksMovement: p.blocksMovement !== false,
++      blocksMovement: isCreature ? false : p.blocksMovement !== false,
++      ...(creaturePayload
++        ? {
++            creature: {
++              massKg: creaturePayload.massKg,
++              bloodAlcohol: 0,
++              stunUntilBucket: 0,
++              needs: { grooms: true },
++            },
++          }
++        : {}),
+       ...(typeof p.assetHash === 'string' ? {
+         asset: {
+           hash: p.assetHash,
+@@ -226,6 +274,8 @@
+     if (Object.values(world.players).some((player) => player.x === target.x && player.y === target.y)) return false;
+     moveEntityToRoom(entity, world.roomId, target.x, target.y);
+     world.inventories[entry.author] = (world.inventories[entry.author] ?? []).filter((v) => v !== id);
++    const destCell = world.cells[key(target.x, target.y)];
++    if (destCell) contaminateEntity(world, entity, destCell);
+     recordEvent(world, entry, { entityId: id, to: { x: target.x, y: target.y }, objectMove: true });
+     return true;
+   }
+@@ -254,6 +304,8 @@
+     if (!canWalk(world, target.x, target.y, id) || entityAt(world, target.x, target.y, id)) return false;
+     if (Object.values(world.players).some((player) => player.x === target.x && player.y === target.y)) return false;
+     moveEntityToRoom(entity, world.roomId, target.x, target.y);
++    const destCell = world.cells[key(target.x, target.y)];
++    if (destCell) contaminateEntity(world, entity, destCell);
+     recordEvent(world, entry, { entityId: id, from, to: { x: target.x, y: target.y }, objectMove: true });
+     return true;
+   }
+@@ -316,6 +368,15 @@
+   return false;
+ }
+ 
++function parseCreaturePayload(x: unknown): { massKg: number } | null {
++  if (typeof x !== 'object' || x === null) return null;
++  const c = x as Record<string, unknown>;
++  if (typeof c.massKg !== 'number' || !Number.isFinite(c.massKg) || c.massKg <= 0 || c.massKg > 500) {
++    return null;
++  }
++  return { massKg: c.massKg };
++}
++
+ function findFree(world: World, x: number, y: number): { x: number; y: number } | null {
+   const taken = new Set(Object.values(world.players).map((p) => key(p.x, p.y)));
+   const maxR = Math.max(world.size.w, world.size.h);
+diff --git a/src/sim/history.ts b/src/sim/history.ts
+--- a/src/sim/history.ts
++++ b/src/sim/history.ts
+@@ -1,2 +1,4 @@
+ import type { LogEntry } from './log';
++import { emptyEntityStats } from './world';
++import type { CausalEffect, EntityStats } from './world';
+ import type { EventPointer, World } from './world';
+@@ -49,14 +51,9 @@
+-export function getEntityStats(world: World, entityId: string) {
+-  return world.entityStats[entityId] ?? {
+-    eventCount: 0,
+-    clickCount: 0,
+-    movementCount: 0,
+-    pickupCount: 0,
+-    dropCount: 0,
+-    clicksSinceLastMove: 0,
+-    lastMovedAt: null,
+-    uniqueActors: [],
+-  };
++export function getEntityStats(world: World, entityId: string): EntityStats {
++  return world.entityStats[entityId] ?? emptyEntityStats();
++}
++
++export function getEntityEffects(world: World, entityId: string): CausalEffect[] {
++  return world.entityStats[entityId]?.effects ?? [];
+ }
+ 
+ export function getCellStats(world: World, x: number, y: number) {
+diff --git a/src/sim/chunk-navigation.ts b/src/sim/chunk-navigation.ts
+--- a/src/sim/chunk-navigation.ts
++++ b/src/sim/chunk-navigation.ts
+@@ -1,33 +1,15 @@
+-import { CHUNK_SIZE, worldToChunkCoord, getChunkKey } from './chunks';
+ import type { ChunkManager } from './chunk-manager';
+ 
+ /**
+  * Comprueba si un personaje puede caminar a una coordenada global (x, y)
+  * evaluando el chunk correspondiente en el ChunkManager.
+  */
+ export function canWalkGlobal(
+   chunkManager: ChunkManager,
+   globalX: number,
+   globalY: number
+ ): boolean {
+-  // 1. Encontrar a qué chunk pertenece la coordenada global
+-  const { cx, cz } = worldToChunkCoord(globalX, globalY);
+-
+-  // 2. Obtener el chunk desde la memoria del administrador
+-  const chunk = chunkManager.getChunk(cx, cz);
+-  if (!chunk) {
+-    // Si el chunk no está cargado en memoria (muy lejos o descargado), bloqueamos el paso
+-    return false;
+-  }
+-
+-  // 3. Calcular las coordenadas locales dentro del chunk (con manejo seguro de negativos)
+-  const localX = ((globalX % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+-  const localZ = ((globalY % CHUNK_SIZE) + CHUNK_SIZE) % CHUNK_SIZE;
+-
+-  // 4. Buscar la celda y validar su tipo
+-  const cell = chunk.cells[`${localX},${localZ}`];
++  const cell = chunkManager.getCell(globalX, globalY);
+   if (!cell) return false;
+-
+-  // Una celda es transitable si es suelo o puerta
+   return cell.kind === 'floor' || cell.kind === 'door';
+ }
+diff --git a/src/sim/chunks.ts b/src/sim/chunks.ts
+--- a/src/sim/chunks.ts
++++ b/src/sim/chunks.ts
+@@ -5,5 +5,5 @@
+ export type Chunk = {
+   cx: number;
+   cz: number;
+-  cells: Record<string, { kind: 'floor' | 'wall' | 'object' }>;
++  cells: Record<string, { kind: 'floor' | 'wall' | 'object' | 'door' }>;
+ };
+diff --git a/src/sim/chunk-manager.ts b/src/sim/chunk-manager.ts
+--- a/src/sim/chunk-manager.ts
++++ b/src/sim/chunk-manager.ts
+@@ -70,4 +70,8 @@
+ 
+     return chunk.cells[`${localX},${localZ}`];
+   }
++
++  public getChunk(cx: number, cz: number): Chunk | undefined {
++    return this.loadedChunks.get(getChunkKey(cx, cz));
++  }
+ }
+diff --git a/src/sim/test-util.ts b/src/sim/test-util.ts
+--- a/src/sim/test-util.ts
++++ b/src/sim/test-util.ts
+@@ -9,6 +9,6 @@
+ export function makeActor(roomId = 'r'): Actor {
+ }
+ 
+ export function emit(a: Actor, type: LogEntryType, payload: unknown): LogEntry {
+-  a.t += 1;
++  a.t += 500;
+   const e = signEntry(
+diff --git a/src/sim/worldgen.ts b/src/sim/worldgen.ts
+--- a/src/sim/worldgen.ts
++++ b/src/sim/worldgen.ts
+@@ -1,2 +1,3 @@
+ import { hashCanonical } from './hash';
++import { mulberry32 } from './prng';
+ import { ROOM_H, ROOM_W } from './world';
+@@ -8,17 +9,7 @@
+ const B32 = 'abcdefghijklmnopqrstuvwxyz234567';
+ 
+ export type Cell2 = { x: number; y: number };
+ 
+-/** PRNG pequeño y rápido (mulberry32). */
+-export function mulberry32(seed: number): () => number {
+-  let a = seed >>> 0;
+-  return () => {
+-    a = (a + 0x6d2b79f5) >>> 0;
+-    let t = a;
+-    t = Math.imul(t ^ (t >>> 15), t | 1);
+-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+-  };
+-}
++export { mulberry32 };
+ 
+ export const isSeed = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{64}$/.test(v);
+diff --git a/src/sim/behaviors.test.ts b/src/sim/behaviors.test.ts
+new file mode 100644
+--- /dev/null
++++ b/src/sim/behaviors.test.ts
+@@ -0,0 +1,61 @@
++import { describe, it, expect } from 'vitest';
++import { replay } from './replay';
++import { getEntityEffects } from './history';
++import { makeActor, emit } from './test-util';
++
++describe('behaviors: contaminación, acicalado, intoxicación', () => {
++  it('el jugador pisa cerveza, se lame la pata y se emborracha', () => {
++    const a = makeActor();
++    a.t = 0;
++    const entries = [
++      emit(a, 'INIT', { spawn: { x: 3, y: 3 } }),                 // t=500
++      emit(a, 'POUR', { x: 3, y: 4, material: 'beer', ml: 100 }), // t=1000
++      emit(a, 'MOVE', { x: 3, y: 4 }),                            // t=1500
++    ];
++    const w = replay(entries);
++    expect(w.players[a.id].bloodAlcohol ?? 0).toBeGreaterThan(0);
++    const effects = getEntityEffects(w, `player:${a.id}`);
++    expect(effects.some((e) => e.effect === 'contaminated')).toBe(true);
++    expect(effects.some((e) => e.effect === 'groomed')).toBe(true);
++    expect(effects.some((e) => e.effect === 'intoxicated')).toBe(true);
++  });
++
++  it('POUR rechaza materiales inválidos y distancias', () => {
++    const a = makeActor();
++    const entries = [
++      emit(a, 'INIT', { spawn: { x: 3, y: 3 } }),
++      emit(a, 'POUR', { x: 10, y: 10, material: 'beer', ml: 100 }),
++      emit(a, 'POUR', { x: 3, y: 4, material: 'nonsense', ml: 100 }),
++    ];
++    const w = replay(entries);
++    expect(w.cells['10,10']?.liquid).toBeUndefined();
++    expect(w.cells['3,4']?.liquid).toBeUndefined();
++  });
++
++  it('PLACE con payload creature crea una entidad criatura', () => {
++    const a = makeActor();
++    const entries = [
++      emit(a, 'INIT', { spawn: { x: 3, y: 3 } }),
++      emit(a, 'PLACE', { entityId: 'cat', x: 4, y: 3, creature: { massKg: 4 } }),
++    ];
++    const w = replay(entries);
++    const cat = w.entities['cat'];
++    expect(cat.kind).toBe('creature');
++    expect(cat.creature?.massKg).toBe(4);
++    expect(cat.blocksMovement).toBe(false);
++  });
++
++  it('bloodAlcohol y residue sobreviven a múltiples MOVE', () => {
++    const a = makeActor();
++    a.t = 0;
++    const entries = [
++      emit(a, 'INIT', { spawn: { x: 3, y: 3 } }),
++      emit(a, 'POUR', { x: 3, y: 4, material: 'beer', ml: 100 }),
++      emit(a, 'MOVE', { x: 3, y: 4 }),
++      emit(a, 'MOVE', { x: 3, y: 5 }),
++      emit(a, 'MOVE', { x: 3, y: 6 }),
++    ];
++    const w = replay(entries);
++    expect(w.players[a.id].bloodAlcohol ?? 0).toBeGreaterThan(0);
++  });
++});
