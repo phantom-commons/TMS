@@ -37,7 +37,6 @@ function ensureEntityStats(world: World, id: string): EntityStats {
     clicksSinceLastMove: 0,
     lastMovedAt: null,
     uniqueActors: [],
-effects: [],
   });
 }
 
@@ -295,6 +294,17 @@ export function applyEntry(world: World, entry: LogEntry): boolean {
       return true;
     }
     return false;
+  }
+
+  if (entry.type === 'ATTACK') {
+    const entityId = typeof p.entityId === 'string' ? p.entityId : '';
+    const entity = world.entities[entityId];
+    const target = entity ? roomPos(entity, world) : null;
+    const attacker = world.players[entry.author];
+    if (!entity || !target || !attacker) return false;
+    if (distanceChebyshev(attacker, target) > 1) return false;
+    recordEvent(world, entry, { entityId, to: target, interaction: 'hit' });
+    return true;
   }
 
   // DOOR and NOTE are retained in the type union but have no v1 world semantics yet.

@@ -23,7 +23,7 @@ const DB_PATH = process.env.RELAY_DB ?? join(dirname(fileURLToPath(import.meta.u
 const QUIET = process.env.QUIET === '1';
 
 const ROOM_ID = /^[A-Za-z0-9:_-]{1,64}$/;
-const TYPES = new Set(['INIT', 'ENTER', 'MOVE', 'PLACE', 'PICK_UP', 'DROP', 'PUSH', 'LOCK', 'UNLOCK', 'INTERACT', 'DOOR', 'NOTE']);
+const TYPES = new Set(['INIT', 'ENTER', 'MOVE', 'PLACE', 'PICK_UP', 'DROP', 'PUSH', 'LOCK', 'UNLOCK', 'INTERACT', 'ATTACK', 'DOOR', 'NOTE']);
 const MAX_PAYLOAD_JSON = 2048;
 const MAX_ROOMS = 1000;
 const MAX_ENTRIES_PER_ROOM = 200_000;

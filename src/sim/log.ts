@@ -16,6 +16,7 @@ export type LogEntryType =
   | 'LOCK'
   | 'UNLOCK'
   | 'INTERACT'
+  | 'ATTACK'
   | 'DOOR'
   | 'NOTE';
 

@@ -34,6 +34,11 @@ export function homeSeed(ownerPubkeyHex: string): string {
   return hashCanonical({ domain: 'TMS_HOME_SEED', owner: ownerPubkeyHex });
 }
 
+/** Semilla determinista para habitaciones creadas (no-home) a partir de su id. */
+export function roomSeed(roomId: string): string {
+  return hashCanonical({ domain: 'TMS_ROOM_SEED', roomId });
+}
+
 /** Código corto de 12 caracteres (Base32 minúscula, 60 bits) derivado de tu clave pública. */
 export function homeCode(ownerPubkeyHex: string): string {
   const h = hashCanonical({ domain: 'TMS_HOME_CODE', owner: ownerPubkeyHex });

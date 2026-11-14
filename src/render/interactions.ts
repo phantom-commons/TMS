@@ -5,6 +5,7 @@ export type WorldInteractionHandlers = {
   onEntityPickup: (entityId: string) => boolean;
   onEntityDrop: (entityId: string, x: number, y: number) => void;
   onCellClick: (x: number, y: number) => void;
+  onHover?: (id: string | null) => void;
   onDragPreview?: (cell: { x: number; y: number } | null) => void;
   onInteractionLock?: (locked: boolean) => void;
 };

@@ -1,15 +1,16 @@
 import type { LogEntry } from './log';
-import type { EventPointer, World } from './world';
-
-const eventKey = (entry: Pick<LogEntry, 'author' | 'seq'>) => `${entry.author}:${entry.seq}`;
+import type { World } from './world';
 
 function resolvePointers(world: World, entries: readonly LogEntry[], indexes: number[]): LogEntry[] {
-  const byId = new Map(entries.map((entry) => [eventKey(entry), entry]));
-  return indexes
-    .map((index) => world.eventRefs[index])
-    .filter((pointer): pointer is EventPointer => !!pointer)
-    .map((pointer) => byId.get(pointer.eventId))
-    .filter((entry): entry is LogEntry => !!entry);
+  const out: LogEntry[] = [];
+  for (const index of indexes) {
+    const pointer = world.eventRefs[index];
+    if (!pointer) continue;
+    const entryIndex = world.eventIndex[pointer.eventId];
+    const entry = entryIndex === undefined ? undefined : entries[entryIndex];
+    if (entry) out.push(entry);
+  }
+  return out;
 }
 
 export function getEntityHistory(world: World, entries: readonly LogEntry[], entityId: string): LogEntry[] {
