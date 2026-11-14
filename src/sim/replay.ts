@@ -45,13 +45,10 @@ export function replay(entries: LogEntry[]): World {
 
   for (const e of entries) {
     if (e.type === 'INIT') {
-      const { roomId, spawn, owner } = e.payload as {
-        roomId: string;
-        spawn: { x: number; y: number };
-        owner?: string;
-      };
-      world = createGenesisRoom(roomId);
-      world.players[owner ?? e.author] = { x: spawn.x, y: spawn.y, hlc: e.hlc };
+      if (world) continue; // solo el primer INIT crea la room
+      const { spawn } = e.payload as { spawn: { x: number; y: number } };
+      world = createGenesisRoom(e.roomId, spawn);
+      world.players[e.author] = { x: spawn.x, y: spawn.y, hlc: e.hlc };
       continue;
     }
     if (!world) throw new Error(`entry before INIT at seq ${e.seq}`);

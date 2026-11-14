@@ -14,6 +14,7 @@ export type World = {
   size: { w: number; h: number };
   cells: Record<string, Cell>;
   players: Record<string, { x: number; y: number; hlc: HLC }>;
+  spawn: { x: number; y: number };
 };
 
 export const ROOM_W = 20;
@@ -23,7 +24,7 @@ export const key = (x: number, y: number) => `${x},${y}`;
 
 const GENESIS_HLC: HLC = { t: 0, c: 0 };
 
-export function createGenesisRoom(roomId = 'room-genesis'): World {
+export function createGenesisRoom(roomId = 'room-genesis', spawn = { x: 3, y: 3 }): World {
   const cells: Record<string, Cell> = {};
 
   for (let y = 0; y < ROOM_H; y++) {
@@ -40,12 +41,7 @@ export function createGenesisRoom(roomId = 'room-genesis'): World {
     hlc: GENESIS_HLC,
   };
 
-  return {
-    roomId,
-    size: { w: ROOM_W, h: ROOM_H },
-    cells,
-    players: {},
-  };
+  return { roomId, size: { w: ROOM_W, h: ROOM_H }, cells, players: {}, spawn };
 }
 
 export function canWalk(world: World, x: number, y: number): boolean {

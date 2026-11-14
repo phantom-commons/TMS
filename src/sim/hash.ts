@@ -29,7 +29,7 @@ export function hexToBytes(hex: string): Uint8Array {
   return bytes;
 }
 
-export function chainHash(prevHash: string, payload: unknown, hlc: HLC, author: string): string {
-  const s = `${prevHash}|${canonical(payload)}|${hlc.t}:${hlc.c}|${author}`;
+export function chainHash(prevHash: string, roomId: string, payload: unknown, hlc: HLC, author: string): string {
+  const s = `${prevHash}|${JSON.stringify(roomId)}|${canonical(payload)}|${hlc.t}:${hlc.c}|${author}`;
   return bytesToHex(sha256(new TextEncoder().encode(s)));
 }

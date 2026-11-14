@@ -13,7 +13,7 @@ import { HLClock } from './sim/hlc';
 import { GENESIS_HASH, bytesToHex } from './sim/hash';
 import { signEntry, verifyChain, type LogEntry, type UnsealedEntry } from './sim/log';
 import { replay, applyEntry } from './sim/replay';
-import { loadLog, saveLog } from './identity/log-storage';
+import { loadLog, appendEntry } from './identity/log-storage';
 
 async function boot() {
   const identity = await ensureIdentity();
@@ -34,7 +34,7 @@ async function boot() {
       prevHash: GENESIS_HASH,
     };
     entries = [signEntry(init, identity.privateKey)];
-    await saveLog(entries);
+    await appendEntry(entries[0]);
     console.log('created INIT entry');
   } else {
     const v = verifyChain(entries, author);
@@ -86,7 +86,7 @@ async function boot() {
     const entry = signEntry(unsealed, identity.privateKey);
     entries.push(entry);
     applyEntry(world, entry);
-    void saveLog(entries);
+    void appendEntry(entry);
   };
 
   const controller = createController([createKeyboard(), createTouchPad(), createGamepad()]);

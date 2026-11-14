@@ -10,6 +10,7 @@ export type LogEntryType = 'INIT' | 'ENTER' | 'MOVE' | 'PLACE' | 'DOOR' | 'NOTE'
 export type LogEntry = {
   seq: number;
   type: LogEntryType;
+  roomId: string;
   payload: unknown;
   author: string;
   hlc: HLC;
@@ -21,7 +22,7 @@ export type LogEntry = {
 export type UnsealedEntry = Omit<LogEntry, 'hash' | 'sig'>;
 
 export function computeHash(e: UnsealedEntry): string {
-  return chainHash(e.prevHash, e.payload, e.hlc, e.author);
+  return chainHash(e.prevHash, e.roomId, e.payload, e.hlc, e.author);
 }
 
 export function signEntry(e: UnsealedEntry, privateKey: Uint8Array): LogEntry {
