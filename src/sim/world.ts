@@ -1,4 +1,4 @@
-//
+import type { MaterialId } from './materials';
 
 export type HLC = { t: number; c: number };
 
