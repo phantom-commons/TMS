@@ -1,5 +1,5 @@
 import type { LogEntry } from '../sim/log';
-import { getEventTime } from '../sim/history';
+import { getEventTime } from './time';
 
 export type InspectorModel = {
   title: string;
