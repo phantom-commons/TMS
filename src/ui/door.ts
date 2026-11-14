@@ -54,6 +54,16 @@ export function createDoorDialog(deps: { enter: (roomId: string) => void }): Doo
     row.append(enter, cancel);
     card.append(input, err, row);
 
+    const proc = document.createElement('button');
+    proc.type = 'button';
+    proc.className = 'secondary door-wide';
+    proc.textContent = '🌍 Mundo procedural';
+    proc.addEventListener('click', () => {
+      close();
+      deps.enter(`room-${Math.random().toString(36).slice(2, 10)}`);
+    });
+    card.append(proc);
+
     const submit = () => {
       const roomId = dest === 'home' ? 'home' : input.value.trim() || dest;
       if (!/^[A-Za-z0-9:_-]{1,64}$/.test(roomId)) {
