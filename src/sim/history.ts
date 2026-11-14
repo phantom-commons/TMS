@@ -35,6 +35,7 @@ export function getEntityStats(world: World, entityId: string) {
     clicksSinceLastMove: 0,
     lastMovedAt: null,
     uniqueActors: [],
+    effects: [],
   };
 }
 
