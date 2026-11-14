@@ -171,7 +171,8 @@ export function applyEntry(world: World, entry: LogEntry): boolean {
     const y = p.y;
     const target = { x, y };
     if (!world.players[entry.author]) return false;
-    if (typeof id !== 'string' || !/^[A-Za-z0-9:_-]{1,128}$/.test(id) || world.entities[id] || !validCell(world, target)) return false;
+    if (typeof id !== 'string' || !/^[A-Za-z0-9:_-]{1,128}$/.test(id) || id.startsWith('player:') || world.entities[id] || !validCell(world, target)) return false;
+    if (!isNearPlayer(world, entry.author, target.x, target.y)) return false;
     if (Object.values(world.players).some((player) => player.x === target.x && player.y === target.y)) return false;
     const tile = world.cells[key(target.x, target.y)];
     const legacyObjectTile = tile?.kind === 'object';
@@ -223,6 +224,7 @@ export function applyEntry(world: World, entry: LogEntry): boolean {
     const entity = world.entities[id];
     if (!entity || entity.location.kind !== 'inventory' || entity.location.owner !== entry.author) return false;
     if (!canWalk(world, target.x, target.y) || entityAt(world, target.x, target.y)) return false;
+    if (!isNearPlayer(world, entry.author, target.x, target.y)) return false;
     if (Object.values(world.players).some((player) => player.x === target.x && player.y === target.y)) return false;
     moveEntityToRoom(entity, world.roomId, target.x, target.y);
     world.inventories[entry.author] = (world.inventories[entry.author] ?? []).filter((v) => v !== id);
@@ -275,31 +277,32 @@ export function applyEntry(world: World, entry: LogEntry): boolean {
     if (typeof p.entityId === 'string') {
       const entity = world.entities[p.entityId];
       if (entity) {
-        const to = entity.location.kind === 'room' ? { x: entity.location.x, y: entity.location.y } : undefined;
+        if (entity.location.kind !== 'room' || entity.location.roomId !== world.roomId) return false;
+        const to = { x: entity.location.x, y: entity.location.y };
+        if (!isNearPlayer(world, entry.author, to.x, to.y)) return false;
         recordEvent(world, entry, { entityId: p.entityId, to, interaction: 'click', click: true });
         return true;
       }
       const playerId = p.entityId.startsWith('player:') ? p.entityId.slice('player:'.length) : '';
       const player = world.players[playerId];
-      if (player) {
+      if (player && isNearPlayer(world, entry.author, player.x, player.y)) {
         recordEvent(world, entry, { entityId: p.entityId, to: player, interaction: 'click', click: true });
         return true;
       }
       return false;
     }
     const cell = asObjectPayload(p.cell);
-    if (cell && validCell(world, { x: cell.x, y: cell.y })) {
-      recordEvent(world, entry, { to: { x: cell.x as number, y: cell.y as number }, interaction: 'click', click: true });
+    const target = cell ? { x: cell.x, y: cell.y } : null;
+    if (target && validCell(world, target) && isNearPlayer(world, entry.author, target.x, target.y)) {
+      recordEvent(world, entry, { to: { x: target.x, y: target.y }, interaction: 'click', click: true });
       return true;
     }
     return false;
   }
 
-  // DOOR and NOTE are retained in the type union but have no v1 world semantics yet.
-  if (entry.type === 'DOOR' || entry.type === 'NOTE') {
-    recordEvent(world, entry, {});
-    return true;
-  }
+  // These event names are reserved, but remain rejected until their state
+  // transitions and permission rules are implemented explicitly.
+  if (entry.type === 'DOOR' || entry.type === 'NOTE') return false;
   return false;
 }
 
@@ -333,6 +336,9 @@ export function replay(entries: LogEntry[]): World {
     if (entry.type === 'INIT') {
       if (world) continue;
       const payload = asObjectPayload(entry.payload);
+      if (payload?.owner !== undefined && payload.owner !== entry.author) {
+        throw new Error('INIT owner must match its signing author');
+      }
       const spawn = asObjectPayload(payload?.spawn) ?? { x: 3, y: 3 };
       if (!validSpawn(spawn.x) || !validSpawn(spawn.y)) throw new Error('INIT has invalid spawn coordinates');
       const sx = spawn.x;
