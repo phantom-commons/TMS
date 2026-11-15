@@ -16,7 +16,7 @@ export function createDoorDialog(deps: { enter: (roomId: string) => void; onCanc
   const card = document.createElement('div');
   card.className = 'login-card door';
   overlay.append(card);
-  document.body.append(overlay);
+  // el overlay se añade al DOM solo en open(): si no, queda una tarjeta vacía (barra gris) tapando la pantalla
 
   const open = (dest: string) => {
     if (overlay.isConnected) return;

@@ -14,7 +14,7 @@ export function createLabsPanel(deps: { place: (entry: AssetEntry) => void }): L
   const card = document.createElement('div');
   card.className = 'login-card door';
   overlay.append(card);
-  document.body.append(overlay);
+  // el overlay se añade al DOM solo en open(): si no, queda una tarjeta vacía (barra gris) tapando la pantalla
 
   const close = () => overlay.remove();
 
