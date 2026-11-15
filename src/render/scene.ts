@@ -6,6 +6,8 @@ export type SceneCtx = {
   sun: THREE.DirectionalLight;
   setShadows: (on: boolean) => void;
   setFog: (on: boolean) => void;
+  /** 'atrium': tonemapping cinematográfico y luz cálida; 'classic': el aspecto original. */
+  setLook: (look: 'atrium' | 'classic') => void;
   onResize: (cb: () => void) => void;
   dispose: () => void;
 };
@@ -23,7 +25,8 @@ export function createScene(canvas: HTMLCanvasElement, worldW: number, worldH: n
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   // luz de cielo/suelo + sol con sombras (cubre toda la sala)
-  scene.add(new THREE.HemisphereLight(0xcfd8ff, 0x20232d, 0.75));
+  const hemi = new THREE.HemisphereLight(0xcfd8ff, 0x20232d, 0.75);
+  scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xffffff, 1.1);
   sun.position.set(worldW * 0.8, 24, worldH * 0.3);
   sun.target.position.set(worldW / 2, 0, worldH / 2);
@@ -51,6 +54,16 @@ export function createScene(canvas: HTMLCanvasElement, worldW: number, worldH: n
     },
     setFog(on) {
       scene.fog = on ? new THREE.Fog(BG, 8, 28) : null;
+    },
+    setLook(look) {
+      const atrium = look === 'atrium';
+      renderer.toneMapping = atrium ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
+      renderer.toneMappingExposure = atrium ? 1.0 : 1;
+      hemi.color.setHex(atrium ? 0xb9c4ff : 0xcfd8ff);
+      hemi.groundColor.setHex(atrium ? 0x2a2230 : 0x20232d);
+      hemi.intensity = atrium ? 0.55 : 0.75;
+      sun.color.setHex(atrium ? 0xffe6c4 : 0xffffff);
+      sun.intensity = atrium ? 1.35 : 1.1;
     },
     onResize: (cb) => void listeners.push(cb),
     dispose() {

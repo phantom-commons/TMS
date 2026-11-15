@@ -93,54 +93,6 @@ body {
   transition: border-color 0.15s;
 }
 .hud-btn:hover { border-color: #9b7bff; }
-.hud-attack { position: fixed; top: auto; right: 28px; bottom: 92px; z-index: 45; }
-
-/* chat de sala */
-#room-chat {
-  position: fixed;
-  left: 50%;
-  bottom: 46px;
-  transform: translateX(-50%);
-  width: min(560px, calc(100vw - 24px));
-  z-index: 25;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.room-chat-log {
-  max-height: 96px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  background: rgba(16, 19, 26, 0.75);
-  border: 1px solid #2b2f3a;
-  border-radius: 8px;
-  padding: 6px 10px;
-}
-.room-chat-msg { font: 12px system-ui, sans-serif; color: #cfd3df; overflow-wrap: anywhere; }
-.room-chat-msg b { color: #9b7bff; margin-right: 6px; }
-.room-chat-form { display: flex; gap: 6px; }
-.room-chat-input {
-  flex: 1;
-  padding: 8px 12px;
-  background: #111318;
-  border: 1px solid #2b2f3a;
-  border-radius: 8px;
-  color: #e0e0e0;
-  font-size: 13px;
-  outline: none;
-}
-.room-chat-input:focus { border-color: #9b7bff; }
-.room-chat-send {
-  padding: 8px 14px;
-  background: #9b7bff;
-  color: #111318;
-  border: none;
-  border-radius: 8px;
-  font-weight: 600;
-  cursor: pointer;
-}
 
 /* Event-history inspector */
 .history-panel {
@@ -266,18 +218,7 @@ body {
 .radial.open .radial-item { opacity: 1; pointer-events: auto; transform: translate(var(--tx), var(--ty)) scale(1); }
 .radial-item:hover { border-color: #9b7bff; }
 
-/* barra de atajos y chip */
-.hints {
-  position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); z-index: 20;
-  color: #8f96a8; background: rgba(16, 19, 26, 0.6); border-radius: 8px; padding: 4px 12px;
-  font: 12px system-ui, sans-serif; pointer-events: none; max-width: calc(100vw - 180px); text-align: center;
-}
-.hints[hidden], .chip[hidden], .inspector[hidden], .dev-hud[hidden] { display: none; }
-.chip {
-  position: fixed; top: 16px; left: 16px; z-index: 20; color: #cfd3df; background: rgba(16, 19, 26, 0.75);
-  border: 1px solid #2b2f3a; border-radius: 999px; padding: 4px 12px; font: 12px system-ui, sans-serif; pointer-events: none;
-}
-.chip[data-state='on'] { border-color: #3d8f6a; }
+.inspector[hidden], .dev-hud[hidden] { display: none; }
 
 /* inspector: fijo abajo a la izquierda, tenue */
 .inspector {
@@ -370,21 +311,7 @@ body {
     height: 38px;
   }
 
-  .chip {
-    top: max(12px, env(safe-area-inset-top));
-    left: max(12px, env(safe-area-inset-left));
-    max-width: calc(100vw - 72px);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 11px;
-    padding: 4px 10px;
-  }
 
-  /* Evita que las teclas de teclado y el inspector tapen el joystick en móvil */
-  .hints {
-    display: none;
-  }
 
   .inspector {
     left: max(12px, env(safe-area-inset-left));

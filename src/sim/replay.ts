@@ -14,6 +14,7 @@ import {
   type WorldEntity,
 } from './world';
 import { generatePillars, homeRoomId, isHomeRoomId, isSeed } from './worldgen';
+import { isLayout, layoutWalls } from './layouts';
 
 function ensureCellActivity(world: World, cellKey: string): CellActivity {
   return (world.cellActivity[cellKey] ??= {
@@ -362,9 +363,11 @@ export function replay(entries: LogEntry[]): World {
       }
       const seed = isSeed(payload?.seed) ? payload.seed : undefined;
       const doorTo = typeof payload?.doorTo === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(payload.doorTo) ? payload.doorTo : undefined;
+      const layout = isLayout(payload?.layout) ? payload.layout : undefined;
       world = createGenesisRoom(entry.roomId, { x: sx, y: sy }, {
         legacyCube: entry.version !== 2,
-        ...(seed ? { seed, pillars: generatePillars(seed, { x: sx, y: sy }) } : {}),
+        ...(layout ? { layout, pillars: layoutWalls(layout), ...(seed ? { seed } : {}) } : {}),
+        ...(!layout && seed ? { seed, pillars: generatePillars(seed, { x: sx, y: sy }) } : {}),
         ...(doorTo ? { doorTo } : {}),
       });
       if (world.cells[key(sx, sy)]?.kind !== 'floor') throw new Error('INIT spawn must be a walkable floor cell');

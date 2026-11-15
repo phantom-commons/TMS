@@ -131,6 +131,8 @@ export type World = {
   spawn: { x: number; y: number };
   /** Semilla de generación (hex). null en salas antiguas sin generación. */
   seed: string | null;
+  /** Plantilla de sala (p. ej. 'atrium'). null = sala generada por semilla. */
+  layout: 'atrium' | null;
   lastHlcTime: number;
   lastTickBucket: number;
 
@@ -155,7 +157,7 @@ const GENESIS_HLC: HLC = { t: 0, c: 0 };
 export function createGenesisRoom(
   roomId = 'room-genesis',
   spawn = { x: 3, y: 3 },
-  options: { legacyCube?: boolean; seed?: string; doorTo?: string; pillars?: Array<{ x: number; y: number }> } = { legacyCube: true },
+  options: { legacyCube?: boolean; seed?: string; doorTo?: string; layout?: 'atrium'; pillars?: Array<{ x: number; y: number }> } = { legacyCube: true },
 ): World {
   const cells: Record<string, Cell> = {};
   for (let y = 0; y < ROOM_H; y++) {
@@ -182,6 +184,7 @@ export function createGenesisRoom(
     inventories: {},
     spawn,
     seed: options.seed ?? null,
+    layout: options.layout ?? null,
     lastHlcTime: 0,
     lastTickBucket: 0,
     eventRefs: [],

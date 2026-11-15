@@ -7,6 +7,7 @@ import { createGamepad } from './input/gamepad';
 import { attachActionKeys, type ActionName } from './input/actions';
 import { createScene } from './render/scene';
 import { createSyncer } from './render/sync';
+import { createAtriumStage } from './render/stage-atrium';
 import { loadBackground } from './render/asset-store';
 import { createCameraRig, CAM_LABEL, CAM_MODES, usesFacing } from './render/camera';
 import { attachWorldInteractions } from './render/interactions';
@@ -14,6 +15,7 @@ import { ensureIdentity } from './ui/login';
 import { attachSettings } from './ui/settings';
 import { createSettingsStore, type Settings } from './ui/settings-store';
 import { createRadial } from './ui/radial';
+import { createHud, type HudChatMsg, type HudPrompt } from './ui/hud';
 import { createInspector, type InspectorModel } from './ui/inspector';
 import { createDevHud } from './ui/devhud';
 import { createDoorDialog } from './ui/door';
@@ -27,9 +29,10 @@ import { bytesToHex } from './sim/hash';
 import { signEntry, verifyChain, verifyEntry, type LogEntry, type LogEntryType } from './sim/log';
 import { RoomState, type ApplyResult } from './sim/room';
 import { getCellStats, getCellHistory, getEntityHistory, getEntityStats } from './sim/history';
-import { isError, planDrop, planLock, planPickUp, planPush, planPushTo, screenToGrid } from './sim/actions';
+import { entitiesNear, isError, planDrop, planLock, planPickUp, planPush, planPushTo, screenToGrid } from './sim/actions';
 import { presenceState } from './sim/presence';
 import { generatePillars, homeRoomId, homeSeed, isHomeRoomId, roomSeed, starterCubes } from './sim/worldgen';
+import { layoutFor, layoutSpawn, layoutWalls } from './sim/layouts';
 import { createRelayClient, defaultRelayUrl, type RelayClient, type RelayStatus } from './net/relay-client';
 
 const short = (id: string) => `${id.slice(0, 6)}…${id.slice(-3)}`;
@@ -89,6 +92,7 @@ async function boot() {
   const rig = createCameraRig(ROOM_W, ROOM_H, store.get().camera);
   ctx.onResize(rig.resize);
   const syncer = createSyncer(ctx.scene, world, author);
+  const stage = createAtriumStage(ctx.scene);
   void loadBackground('5244534E9CF5B606F2FF513AA00DDB161B0A4826FFD88A0D3BD03AC29247D198').then((tex) => {
     ctx.scene.background = tex;
   });
@@ -125,10 +129,20 @@ async function boot() {
   const bootstrapRoom = () => {
     if (room.hasInit()) return;
     const spawn = { x: 3, y: 3 };
+    const layout = layoutFor(roomId);
     if (ownHome) {
       const seed = homeSeed(author);
       send('INIT', { spawn, owner: author, seed, doorTo: 'lobby' });
       starterCubes(seed, spawn, generatePillars(seed, spawn)).forEach((c, i) =>
+        send('PLACE', { entityId: `${roomId}:cube-${i + 1}`, x: c.x, y: c.y, blocksMovement: true }),
+      );
+    } else if (layout && (ready || !store.get().online)) {
+      // Plantilla pública (p. ej. «atrium»): el INIT solo nombra la plantilla y las celdas salen de
+      // layouts.ts, así que cualquiera puede recalcularlas. Si el relay ya la tiene, se espera a ready.
+      const seed = roomSeed(roomId);
+      const lspawn = layoutSpawn(layout);
+      send('INIT', { spawn: lspawn, owner: author, seed, layout, doorTo: 'home' });
+      starterCubes(seed, lspawn, layoutWalls(layout)).forEach((c, i) =>
         send('PLACE', { entityId: `${roomId}:cube-${i + 1}`, x: c.x, y: c.y, blocksMovement: true }),
       );
     } else if (ready && !isHomeRoomId(roomId)) {
@@ -453,53 +467,11 @@ async function boot() {
     goHome: () => navigateToRoom('home'),
   });
 
-  const hints = document.createElement('div');
-  hints.className = 'hints';
-  hints.textContent = 'WASD mover · F recoger/soltar · G atacar · L bloquear · C cámara · Q/E girar · R radial · F2 dev';
-  const chip = document.createElement('div');
-  chip.className = 'chip';
-  document.body.append(hints, chip);
-
-  // Botón en pantalla para atacar sin abrir el radial (G también lo hace).
-  const attackBtn = document.createElement('button');
-  attackBtn.id = 'hud-attack';
-  attackBtn.className = 'hud-btn';
-  attackBtn.title = 'Atacar (G)';
-  attackBtn.textContent = '⚔️';
-  attackBtn.onclick = doAttack;
-  document.body.append(attackBtn);
-
-  // ───────────── chat de sala ─────────────
-  const chatEl = document.createElement('div');
-  chatEl.id = 'room-chat';
-  const chatLogEl = document.createElement('div');
-  chatLogEl.className = 'room-chat-log';
-  const chatForm = document.createElement('form');
-  chatForm.className = 'room-chat-form';
-  const chatInput = document.createElement('input');
-  chatInput.id = 'room-chat-input';
-  chatInput.className = 'room-chat-input';
-  chatInput.placeholder = 'mensaje…';
-  const chatSend = document.createElement('button');
-  chatSend.type = 'submit';
-  chatSend.className = 'room-chat-send';
-  chatSend.textContent = '➤';
-  chatForm.append(chatInput, chatSend);
-  chatEl.append(chatLogEl, chatForm);
-  document.body.append(chatEl);
-  chatForm.onsubmit = (e) => {
-    e.preventDefault();
-    const text = chatInput.value.trim();
-    if (!text) return;
-    send('MESSAGE', { text });
-    chatInput.value = '';
-  };
-  chatInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      chatInput.value = chatInput.value.trim();
-      chatForm.requestSubmit();
-    }
+  // ───────────── HUD (estado, minimapa, brújula, aviso, chat, atajos) ─────────────
+  const hud = createHud({
+    onSend: (text) => send('MESSAGE', { text }),
+    onPickDrop: doPickDrop,
+    onAttack: doAttack,
   });
 
   const applySettings = (s: Settings) => {
@@ -508,8 +480,9 @@ async function boot() {
     ctx.setShadows(s.shadows);
     ctx.setFog(s.fog && usesFacing(s.camera));
     radial.setVisible(s.radial);
-    hints.hidden = !s.hints;
-    chip.hidden = !s.status;
+    hud.applySettings(s);
+    stage.setEnabled(s.stage === 'atrium');
+    ctx.setLook(s.stage);
     devHud.setVisible(s.dev);
     if (s.online) startRelay();
     else stopRelay();
@@ -527,7 +500,9 @@ async function boot() {
     else if (a === 'turnR' && usesFacing(rig.mode)) rig.turn(1);
     else if (a === 'dev') store.set({ dev: !store.get().dev });
     else if (a === 'radial') radial.toggle();
+    else if (a === 'chat') hud.openChat();
     else if (a === 'escape') {
+      hud.closeChat();
       document.getElementById('settings-overlay')?.remove();
       document.getElementById('labs-overlay')?.remove();
       closeDoor();
@@ -636,6 +611,34 @@ async function boot() {
 
   const controller = createController([createKeyboard(), createTouchPad(), createGamepad()]);
 
+  // ───────────── aviso contextual del HUD ─────────────
+  let hudLink: 'relay' | 'local' | 'connecting' = 'local';
+  let hudLinkLabel = 'local';
+  let hudBag: string | null = null;
+  let hudPrompt: HudPrompt = null;
+  const label = (id: string) => id.split(':').pop() ?? id;
+  const computePrompt = (): HudPrompt => {
+    const me = world.players[author];
+    if (!me || doorOpen || travelling) return null;
+    const bag = world.inventories[author] ?? [];
+    if (bag.length) return { keys: ['F'], text: `soltar ${label(bag[0])}` };
+    const near = entitiesNear(world, author)[0];
+    if (near) {
+      return near.lockedBy
+        ? { keys: [], text: `${label(near.id)} · bloqueado${near.lockedBy === author ? ' por ti' : ''}` }
+        : { keys: ['F'], text: `recoger ${label(near.id)}` };
+    }
+    for (const [k, c] of Object.entries(world.cells)) {
+      if (c.kind !== 'door') continue;
+      const [dx, dy] = k.split(',').map(Number);
+      if (Math.max(Math.abs(dx - me.x), Math.abs(dy - me.y)) <= 1) {
+        const dest = c.targetRoomId === 'home' ? 'tu sala' : (c.targetRoomId ?? 'lobby');
+        return { keys: [], text: `puerta → ${dest} · pisa o haz clic` };
+      }
+    }
+    return null;
+  };
+
   // ───────────── bucle ─────────────
   let last = performance.now();
   let fps = 60;
@@ -650,29 +653,44 @@ async function boot() {
 
     syncer.update(world, dt, { selfId: author, online, now: Date.now(), showGhosts: store.get().ghosts });
     rig.update(dt, syncer.selfPosition());
+    stage.update(world, dt, { self: syncer.selfPosition(), events: room.entryCount, particles: store.get().fx });
     ctx.renderer.render(ctx.scene, rig.camera());
     checkDoor();
+    hud.update({
+      world,
+      self: author,
+      online,
+      now: Date.now(),
+      yaw: rig.yaw(),
+      link: hudLink,
+      linkLabel: hudLinkLabel,
+      roomLabel: ownHome ? 'tu sala' : roomId.length > 22 ? `${roomId.slice(0, 21)}…` : roomId,
+      pending: room.pendingCount,
+      bag: hudBag,
+      camLabel: CAM_LABEL[rig.mode],
+      prompt: hudPrompt,
+      focus: selected && 'cell' in selected ? selected.cell : null,
+      showGhosts: store.get().ghosts,
+    });
 
     hudTimer += dt;
     if (hudTimer > 0.25) {
       hudTimer = 0;
-      const msgs = room.allEntries().filter((e) => e.type === 'MESSAGE').slice(-30);
-      chatLogEl.replaceChildren();
-      for (const e of msgs) {
-        const payload = (e.payload ?? null) as { text?: unknown } | null;
-        const row = document.createElement('div');
-        row.className = 'room-chat-msg';
-        const who = document.createElement('b');
-        who.textContent = short(e.author);
-        const txt = document.createElement('span');
-        txt.textContent = typeof payload?.text === 'string' ? payload.text : '';
-        row.append(who, txt);
-        chatLogEl.append(row);
+      if (store.get().chat) {
+        const msgs: HudChatMsg[] = [];
+        for (const e of room.allEntries()) {
+          if (e.type !== 'MESSAGE') continue;
+          const text = (e.payload as { text?: unknown } | null)?.text;
+          if (typeof text === 'string') msgs.push({ author: e.author, text, mine: e.author === author });
+        }
+        hud.setChat(msgs.slice(-30));
       }
-      const mode = status === 'open' && ready ? 'relay' : store.get().online ? 'local (sin relay)' : 'local';
+      const connecting = store.get().online && !ready && status !== 'closed';
+      hudLink = status === 'open' && ready ? 'relay' : connecting ? 'connecting' : 'local';
+      hudLinkLabel = hudLink === 'relay' ? 'relay' : hudLink === 'connecting' ? 'conectando…' : store.get().online ? 'local (sin relay)' : 'local';
       const bag = world.inventories[author] ?? [];
-      chip.textContent = `● ${mode}${room.pendingCount ? `  ↑${room.pendingCount}` : ''}${bag.length ? `  🎒 ${bag[0]}` : ''}  · ${CAM_LABEL[rig.mode]}`;
-      chip.dataset.state = mode === 'relay' ? 'on' : 'off';
+      hudBag = bag.length ? (bag[0].split(':').pop() ?? bag[0]) : null;
+      hudPrompt = computePrompt();
       radial.setBadge('pickdrop', bag.length ? '1' : '');
       if (store.get().dev) {
         const all = room.allEntries();

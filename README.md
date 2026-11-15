@@ -24,9 +24,23 @@ npm test && npm run lint && npm run check
   Nadie puede crear una `home-*` ajena: la sim rechaza un INIT que no firma su dueño.
 - La puerta azul lleva a `lobby`; en el lobby, a tu home.
 
+## Atrium y escenario 3D
+
+`?room=atrium` (o el botón 🏛 de la puerta) crea una sala con plantilla: el `INIT` solo lleva `layout: 'atrium'`
+y las celdas salen de `src/sim/layouts.ts` (determinista, igual en cliente y relay): nave con columnas y altar central.
+`src/render/stage-atrium.ts` es pura presentación (no firma nada): sigilo en el suelo grabado con los 64 hex de la
+semilla, anillo con un eslabón por evento firmado (los últimos 64), columnas con cristal y luz, cornisa, arco de la
+puerta, linterna que sigue al avatar y polvo. Ajustes → *Escenario 3D* lo cambia a «Clásico».
+
+## HUD
+
+`src/ui/hud.ts` agrupa estado, minimapa (con calor de visitas y flecha de la cámara), brújula, aviso contextual,
+chat plegable (Enter), leyenda de atajos y botones rápidos. Cada pieza tiene su interruptor en Ajustes; el inspector
+sigue fijo abajo a la izquierda (siempre / al pasar o click / apagado).
+
 ## Controles
 
 WASD/flechas mover (también empuja cubos) · F recoger/soltar · L bloquear · C cámara · Q/E girar (1ª/3ª persona) ·
-R menú radial · F2 panel dev · rueda: zoom · click en objeto: inspector · arrastrar objeto: empujar.
+R menú radial · Enter chat · F2 panel dev · rueda: zoom · click en objeto: inspector · arrastrar objeto: empujar.
 
 Ajustes (⌘): cámara (5), inspector (siempre / al pasar o click / apagado), interruptores de interfaz y red.

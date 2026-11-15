@@ -1,7 +1,7 @@
 import { toMnemonic, type Identity } from '../identity/keys';
 import { clearIdentity } from '../identity/storage';
 import { CAM_LABEL, CAM_MODES } from '../render/camera';
-import type { InspectorMode, Settings, SettingsStore } from './settings-store';
+import type { InspectorMode, Settings, SettingsStore, StageStyle } from './settings-store';
 import { showToast } from './toast';
 
 export type SettingsDeps = {
@@ -14,17 +14,34 @@ export type SettingsDeps = {
   goHome: () => void;
 };
 
-type ToggleKey = 'radial' | 'hints' | 'status' | 'dev' | 'ghosts' | 'shadows' | 'fog' | 'online';
+type ToggleKey = Extract<keyof Settings, 'radial' | 'dock' | 'hints' | 'prompt' | 'status' | 'minimap' | 'compass' | 'chat' | 'dev' | 'ghosts' | 'shadows' | 'fog' | 'fx' | 'online'>;
 
-const TOGGLES: Array<{ key: ToggleKey; label: string; hint?: string }> = [
+type ToggleDef = { key: ToggleKey; label: string; hint?: string };
+
+const HUD_TOGGLES: ToggleDef[] = [
+  { key: 'status', label: 'Estado (sala, conexión, mochila, cámara)' },
+  { key: 'minimap', label: 'Minimapa' },
+  { key: 'compass', label: 'Brújula' },
+  { key: 'prompt', label: 'Aviso contextual' },
+  { key: 'hints', label: 'Leyenda de atajos' },
+  { key: 'chat', label: 'Chat de sala', hint: 'Enter' },
   { key: 'radial', label: 'Menú radial', hint: 'R' },
-  { key: 'hints', label: 'Barra de atajos' },
-  { key: 'status', label: 'Chip de conexión y mochila' },
+  { key: 'dock', label: 'Botones rápidos' },
   { key: 'dev', label: 'Panel de desarrollador', hint: 'F2' },
-  { key: 'ghosts', label: 'Ver fantasmas (desconectados)' },
+];
+
+const GFX_TOGGLES: ToggleDef[] = [
   { key: 'shadows', label: 'Sombras' },
   { key: 'fog', label: 'Niebla en 1ª/3ª persona' },
-  { key: 'online', label: 'Conectar al relay (visitas)' },
+  { key: 'fx', label: 'Partículas del escenario' },
+  { key: 'ghosts', label: 'Ver fantasmas (desconectados)' },
+];
+
+const NET_TOGGLES: ToggleDef[] = [{ key: 'online', label: 'Conectar al relay (visitas)' }];
+
+const STAGES: Array<[StageStyle, string]> = [
+  ['atrium', 'Atrium (cinemático)'],
+  ['classic', 'Clásico'],
 ];
 
 const INSPECTOR: Array<[InspectorMode, string]> = [
@@ -99,31 +116,52 @@ export function attachSettings(deps: SettingsDeps): { open: () => void } {
     }
     card.append(insRow);
 
-    // ---- interruptores ----
-    section('Interfaz y red');
-    const inputs = new Map<ToggleKey, HTMLInputElement>();
-    for (const t of TOGGLES) {
-      const label = document.createElement('label');
-      label.className = 'switch';
-      const input = document.createElement('input');
-      input.type = 'checkbox';
-      input.onchange = () => deps.store.set({ [t.key]: input.checked } as Partial<Settings>);
-      const text = document.createElement('span');
-      text.textContent = t.label;
-      label.append(text);
-      if (t.hint) {
-        const kbd = document.createElement('kbd');
-        kbd.textContent = t.hint;
-        label.append(kbd);
-      }
-      label.append(input);
-      inputs.set(t.key, input);
-      card.append(label);
+    // ---- escenario ----
+    section('Escenario 3D');
+    const stageRow = document.createElement('div');
+    stageRow.className = 'seg';
+    const stageButtons = new Map<string, HTMLButtonElement>();
+    for (const [mode, label] of STAGES) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = label;
+      b.onclick = () => deps.store.set({ stage: mode });
+      stageButtons.set(mode, b);
+      stageRow.append(b);
     }
+    card.append(stageRow);
+
+    // ---- interruptores ----
+    const inputs = new Map<ToggleKey, HTMLInputElement>();
+    const addToggles = (title: string, defs: ToggleDef[]) => {
+      section(title);
+      for (const t of defs) {
+        const label = document.createElement('label');
+        label.className = 'switch';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.onchange = () => deps.store.set({ [t.key]: input.checked } as Partial<Settings>);
+        const text = document.createElement('span');
+        text.textContent = t.label;
+        label.append(text);
+        if (t.hint) {
+          const kbd = document.createElement('kbd');
+          kbd.textContent = t.hint;
+          label.append(kbd);
+        }
+        label.append(input);
+        inputs.set(t.key, input);
+        card.append(label);
+      }
+    };
+    addToggles('Interfaz', HUD_TOGGLES);
+    addToggles('Gráficos', GFX_TOGGLES);
+    addToggles('Red', NET_TOGGLES);
 
     const sync = (s: Settings) => {
       camButtons.forEach((b, mode) => b.classList.toggle('active', s.camera === mode));
       insButtons.forEach((b, mode) => b.classList.toggle('active', s.inspector === mode));
+      stageButtons.forEach((b, mode) => b.classList.toggle('active', s.stage === mode));
       inputs.forEach((input, key) => (input.checked = s[key]));
     };
     sync(deps.store.get());

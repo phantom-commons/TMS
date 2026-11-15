@@ -75,7 +75,7 @@ export function createSyncer(scene: THREE.Scene, initial: World, localId: string
 
   const sigOf = (w: World) => {
     const door = Object.entries(w.cells).find(([, c]) => c.kind === 'door');
-    return `${w.roomId}|${w.seed ?? ''}|${door?.[1].targetRoomId ?? ''}|${w.size.w}x${w.size.h}`;
+    return `${w.roomId}|${w.layout ?? ''}|${w.seed ?? ''}|${door?.[1].targetRoomId ?? ''}|${w.size.w}x${w.size.h}`;
   };
 
   const buildStatic = (w: World) => {

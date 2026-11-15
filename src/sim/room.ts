@@ -43,6 +43,11 @@ export class RoomState {
     return this.pending.length;
   }
 
+  /** Total de eventos (confirmados + pendientes) sin copiar la lista. */
+  get entryCount(): number {
+    return this.confirmed.length + this.pending.length;
+  }
+
   // Entradas ya ordenadas por el relay. Verifica todo: el relay no es de fiar.
   applyConfirmed(items: RelayEntry[]): ApplyResult {
     const accepted: RelayEntry[] = [];

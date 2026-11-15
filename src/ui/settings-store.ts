@@ -1,15 +1,23 @@
 import type { CamMode } from '../render/camera';
 
 export type InspectorMode = 'always' | 'hover' | 'off';
+export type StageStyle = 'atrium' | 'classic';
 
 export type Settings = {
   radial: boolean; // menú radial
-  hints: boolean; // barra de atajos
-  status: boolean; // chip de conexión / mochila
+  dock: boolean; // botones rápidos (recoger/soltar, atacar) junto al radial
+  hints: boolean; // leyenda de atajos
+  prompt: boolean; // aviso contextual ("[F] recoger…")
+  status: boolean; // estado de conexión, sala, mochila y cámara
+  minimap: boolean; // minimapa con calor de visitas
+  compass: boolean; // brújula que gira con la cámara
+  chat: boolean; // chat de sala
   dev: boolean; // panel de desarrollador (F2)
   ghosts: boolean; // ver fantasmas de quien no está conectado
   shadows: boolean;
   fog: boolean; // niebla en cámaras de primera/tercera persona
+  stage: StageStyle; // escenografía 3D de la sala
+  fx: boolean; // partículas (polvo) del escenario
   inspector: InspectorMode; // log de objeto: siempre / al pasar o hacer click / apagado
   online: boolean; // conectar al relay (visitas y copia en la nube)
   camera: CamMode;
@@ -17,12 +25,19 @@ export type Settings = {
 
 export const DEFAULTS: Settings = {
   radial: true,
+  dock: true,
   hints: true,
+  prompt: true,
   status: true,
+  minimap: true,
+  compass: true,
+  chat: true,
   dev: false,
   ghosts: true,
   shadows: true,
   fog: true,
+  stage: 'atrium',
+  fx: true,
   inspector: 'hover',
   online: true,
   camera: 'oblique',

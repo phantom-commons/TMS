@@ -66,6 +66,16 @@ export function createDoorDialog(deps: { enter: (roomId: string) => void; onCanc
     });
     card.append(proc);
 
+    const atrium = document.createElement('button');
+    atrium.type = 'button';
+    atrium.className = 'secondary door-wide';
+    atrium.textContent = '🏛 Atrium';
+    atrium.addEventListener('click', () => {
+      close();
+      deps.enter('atrium');
+    });
+    card.append(atrium);
+
     const submit = () => {
       const roomId = dest === 'home' ? 'home' : input.value.trim() || dest;
       if (!/^[A-Za-z0-9:_-]{1,64}$/.test(roomId)) {

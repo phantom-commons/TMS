@@ -1,4 +1,4 @@
-export type ActionName = 'pickdrop' | 'lock' | 'camera' | 'turnL' | 'turnR' | 'dev' | 'radial' | 'escape' | 'attack';
+export type ActionName = 'pickdrop' | 'lock' | 'camera' | 'turnL' | 'turnR' | 'dev' | 'radial' | 'escape' | 'attack' | 'chat';
 
 const MAP: Record<string, ActionName> = {
   KeyF: 'pickdrop',
@@ -9,6 +9,7 @@ const MAP: Record<string, ActionName> = {
   F2: 'dev',
   KeyR: 'radial',
   KeyG: 'attack',
+  Enter: 'chat',
   Escape: 'escape',
 };
 
