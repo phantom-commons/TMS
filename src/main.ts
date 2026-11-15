@@ -259,6 +259,8 @@ async function boot() {
   const doorDialog = createDoorDialog({ enter: (roomId) => navigateToRoom(roomId), onCancel: () => closeDoor() });
   let doorOpen = false;
   let doorJustClosedAt = 0;
+  // tras entrar a una sala no se autoabre la puerta durante los primeros segundos
+  let doorGraceUntil = performance.now() + 10000;
   const openDoor = (dest: string) => {
     if (doorOpen) return;
     doorOpen = true;
@@ -467,6 +469,39 @@ async function boot() {
   attackBtn.onclick = doAttack;
   document.body.append(attackBtn);
 
+  // ───────────── chat de sala ─────────────
+  const chatEl = document.createElement('div');
+  chatEl.id = 'room-chat';
+  const chatLogEl = document.createElement('div');
+  chatLogEl.className = 'room-chat-log';
+  const chatForm = document.createElement('form');
+  chatForm.className = 'room-chat-form';
+  const chatInput = document.createElement('input');
+  chatInput.id = 'room-chat-input';
+  chatInput.className = 'room-chat-input';
+  chatInput.placeholder = 'mensaje…';
+  const chatSend = document.createElement('button');
+  chatSend.type = 'submit';
+  chatSend.className = 'room-chat-send';
+  chatSend.textContent = '➤';
+  chatForm.append(chatInput, chatSend);
+  chatEl.append(chatLogEl, chatForm);
+  document.body.append(chatEl);
+  chatForm.onsubmit = (e) => {
+    e.preventDefault();
+    const text = chatInput.value.trim();
+    if (!text) return;
+    send('MESSAGE', { text });
+    chatInput.value = '';
+  };
+  chatInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      chatInput.value = chatInput.value.trim();
+      chatForm.requestSubmit();
+    }
+  });
+
   const applySettings = (s: Settings) => {
     rig.setMode(s.camera);
     syncer.setHideSelf(s.camera === 'fps');
@@ -590,6 +625,8 @@ async function boot() {
     // tras cerrar manualmente (Esc/Cancelar) damos un respiro para no reabrir
     // en bucle mientras el jugador sigue pisando la celda de la puerta.
     if (performance.now() - doorJustClosedAt < 800) return;
+    // al entrar/cargar en una sala no autoabrimos la puerta (evita la barrera gris al cargar)
+    if (performance.now() < doorGraceUntil) return;
     const p = world.players[author];
     if (!p || travelling) return;
     const cell = world.cells[key(p.x, p.y)];
@@ -619,6 +656,19 @@ async function boot() {
     hudTimer += dt;
     if (hudTimer > 0.25) {
       hudTimer = 0;
+      const msgs = room.allEntries().filter((e) => e.type === 'MESSAGE').slice(-30);
+      chatLogEl.replaceChildren();
+      for (const e of msgs) {
+        const payload = (e.payload ?? null) as { text?: unknown } | null;
+        const row = document.createElement('div');
+        row.className = 'room-chat-msg';
+        const who = document.createElement('b');
+        who.textContent = short(e.author);
+        const txt = document.createElement('span');
+        txt.textContent = typeof payload?.text === 'string' ? payload.text : '';
+        row.append(who, txt);
+        chatLogEl.append(row);
+      }
       const mode = status === 'open' && ready ? 'relay' : store.get().online ? 'local (sin relay)' : 'local';
       const bag = world.inventories[author] ?? [];
       chip.textContent = `● ${mode}${room.pendingCount ? `  ↑${room.pendingCount}` : ''}${bag.length ? `  🎒 ${bag[0]}` : ''}  · ${CAM_LABEL[rig.mode]}`;

@@ -316,6 +316,10 @@ export function applyEntry(world: World, entry: LogEntry): boolean {
     recordEvent(world, entry, {});
     return true;
   }
+  // MESSAGE: chat. No muta el mundo, solo viaja por la cadena firmada.
+  if (entry.type === 'MESSAGE') {
+    return true;
+  }
   return false;
 }
 

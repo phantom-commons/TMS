@@ -18,7 +18,8 @@ export type LogEntryType =
   | 'INTERACT'
   | 'ATTACK'
   | 'DOOR'
-  | 'NOTE';
+  | 'NOTE'
+  | 'MESSAGE';
 
 /**
  * version omitted means legacy v1. New entries are always signed as v2.

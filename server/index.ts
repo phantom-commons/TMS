@@ -24,7 +24,7 @@ const DB_PATH = process.env.RELAY_DB ?? join(dirname(fileURLToPath(import.meta.u
 const QUIET = process.env.QUIET === '1';
 
 const ROOM_ID = /^[A-Za-z0-9:_-]{1,64}$/;
-const TYPES = new Set(['INIT', 'ENTER', 'MOVE', 'PLACE', 'PICK_UP', 'DROP', 'PUSH', 'LOCK', 'UNLOCK', 'INTERACT', 'ATTACK', 'DOOR', 'NOTE']);
+const TYPES = new Set(['INIT', 'ENTER', 'MOVE', 'PLACE', 'PICK_UP', 'DROP', 'PUSH', 'LOCK', 'UNLOCK', 'INTERACT', 'ATTACK', 'DOOR', 'NOTE', 'MESSAGE']);
 const MAX_PAYLOAD_JSON = 2048;
 const MAX_ROOMS = 1000;
 const MAX_ENTRIES_PER_ROOM = 200_000;
@@ -264,7 +264,7 @@ const http = createServer((req, res) => {
     return;
   }
   res.writeHead(200, { 'content-type': 'text/plain' });
-  res.end('TMS relayyy\n');
+  res.end('TMS relay\n');
 });
 
 const wss = new WebSocketServer({ server: http, maxPayload: 64 * 1024 });
