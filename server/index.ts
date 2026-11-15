@@ -264,7 +264,7 @@ const http = createServer((req, res) => {
     return;
   }
   res.writeHead(200, { 'content-type': 'text/plain' });
-  res.end('TMS relay\n');
+  res.end('TMS relayyy\n');
 });
 
 const wss = new WebSocketServer({ server: http, maxPayload: 64 * 1024 });
