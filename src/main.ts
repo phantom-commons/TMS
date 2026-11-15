@@ -17,6 +17,7 @@ import { createRadial } from './ui/radial';
 import { createInspector, type InspectorModel } from './ui/inspector';
 import { createDevHud } from './ui/devhud';
 import { createDoorDialog } from './ui/door';
+import { createLabsPanel, type LabsPanel } from './ui/labs';
 import { showToast } from './ui/toast';
 import { showHistoryPanel } from './ui/history';
 import { shortPubkey } from './identity/keys';
@@ -272,6 +273,38 @@ async function boot() {
     }
   };
 
+  const labsPanel = createLabsPanel({
+    place: (entry) => {
+      const p = world.players[author];
+      if (!p) {
+        showToast('entra a una sala primero');
+        return;
+      }
+      const taken = new Set(Object.values(world.players).map((pl) => key(pl.x, pl.y)));
+      const size = Math.max(world.size.w, world.size.h);
+      let cell: { x: number; y: number } | null = null;
+      outerLab: for (let r = 0; r < size; r += 1) {
+        for (let dy = -r; dy <= r; dy += 1) {
+          for (let dx = -r; dx <= r; dx += 1) {
+            if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+            const nx = p.x + dx;
+            const ny = p.y + dy;
+            if (world.cells[key(nx, ny)]?.kind === 'floor' && !taken.has(key(nx, ny)) && canWalk(world, nx, ny)) {
+              cell = { x: nx, y: ny };
+              break outerLab;
+            }
+          }
+        }
+      }
+      if (!cell) {
+        showToast('no hay celdas libres cerca');
+        return;
+      }
+      send('PLACE', { entityId: `lab-${entry.hash.slice(0, 8)}`, x: cell.x, y: cell.y, blocksMovement: false, assetHash: entry.hash, assetSize: 0, mimeType: entry.mimeType });
+      showToast(`labs: ${entry.path} colocado`);
+    },
+  });
+
   // ───────────── acciones ─────────────
   const facingVec = () => {
     const g = screenToGrid(0, -1, rig.yaw());
@@ -305,19 +338,6 @@ async function boot() {
       return;
     }
     send('ATTACK', { entityId: id });
-  };
-
-  const openLabs = () => {
-    const placements: Array<{ id: string; hash: string; x: number; y: number }> = [
-      { id: 'lab-pino1', hash: '9F00C115B80FD79BE5F3E63A7D09C49D708AB694B1FD798E20630CC00C2E244F', x: 2, y: 2 },
-      { id: 'lab-foliage3', hash: '56A54C08BC3E793E9FEDC540E8DABAF0605B5489E74C5116754A92291E738AF0', x: 8, y: 8 },
-      { id: 'lab-foliage2_medium', hash: 'AA6DC27B1965EA897BF90BFAA1C45B33ECF190B66A243AC5C05E6F57EC7C3429', x: 12, y: 12 },
-      { id: 'lab-foliage2_small', hash: '7755FC8D7972E5E101321315B07C3CFB9EED7EF21676375EECD1EE73C86CDB70', x: 5, y: 13 },
-    ];
-    for (const pl of placements) {
-      send('PLACE', { entityId: pl.id, x: pl.x, y: pl.y, blocksMovement: false, assetHash: pl.hash, assetSize: 0, mimeType: 'model/gltf-binary' });
-    }
-    showToast('labs: modelos 3D en camino…');
   };
 
   const cycleCamera = () => {
@@ -408,7 +428,7 @@ async function boot() {
   const radial = createRadial([
     { id: 'pickdrop', icon: '🎒', label: 'Recoger / soltar', run: doPickDrop },
     { id: 'attack', icon: '⚔️', label: 'Atacar', run: doAttack },
-    { id: 'labs', icon: '🧪', label: 'Labs 3D', run: openLabs },
+    { id: 'labs', icon: '🧪', label: 'Labs 3D', run: () => labsPanel.open() },
     { id: 'lock', icon: '🔒', label: 'Bloquear', run: doLock },
     { id: 'camera', icon: '🎥', label: 'Cámara', run: cycleCamera },
     { id: 'log', icon: '📜', label: 'Log de la sala', run: fullLog },
