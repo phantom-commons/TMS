@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { EventPointer, World } from '../sim/world';
 import { paletteHue } from '../sim/worldgen';
 import { presenceState } from '../sim/presence';
+import { loadAsset } from './asset-store';
 
 const TILE = 1;
 const WALL_H = 1;
@@ -16,7 +17,7 @@ export type Presence = {
 
 export type Syncer = {
   update: (world: World, dt: number, presence: Presence) => void;
-  entityMeshes: () => ReadonlyMap<string, THREE.Mesh>;
+  entityMeshes: () => ReadonlyMap<string, THREE.Object3D>;
   setHover: (id: string | null) => void;
   setSelected: (id: string | null) => void;
   setHideSelf: (hide: boolean) => void;
@@ -155,6 +156,7 @@ export function createSyncer(scene: THREE.Scene, initial: World, localId: string
   type Avatar = { mesh: THREE.Mesh; target: THREE.Vector3; ghost: boolean; phase: number };
   const avatars = new Map<string, Avatar>();
   const entities = new Map<string, THREE.Mesh>();
+  const assetGroups = new Map<string, THREE.Group>();
   let hideSelf = false;
   let time = 0;
   let floorTick = 0;
@@ -232,6 +234,27 @@ export function createSyncer(scene: THREE.Scene, initial: World, localId: string
     }
     t.mesh.instanceMatrix.needsUpdate = true;
     if (t.mesh.instanceColor) t.mesh.instanceColor.needsUpdate = true;
+  };
+
+  /** Grupo 3D por entidad con asset (GLB) o caja procedural. */
+  const visualFor = (entityId: string, hash: string): THREE.Group => {
+    const existing = assetGroups.get(entityId);
+    if (existing) return existing;
+    const group = new THREE.Group();
+    group.userData.entityId = entityId;
+    assetGroups.set(entityId, group);
+    entityGroup.add(group);
+    void loadAsset(hash).then((scene) => {
+      group.traverse((o) => {
+        if (o instanceof THREE.Mesh) {
+          o.userData.entityId = entityId;
+          o.castShadow = true;
+          o.receiveShadow = true;
+        }
+      });
+      group.add(scene);
+    });
+    return group;
   };
 
   const colorFor = (id: string) =>
@@ -316,24 +339,30 @@ export function createSyncer(scene: THREE.Scene, initial: World, localId: string
         }
         continue;
       }
-      let mesh = entities.get(entity.id);
-      if (!mesh) {
-        mesh = new THREE.Mesh(geoEntity, matObject.clone());
-        mesh.add(new THREE.LineSegments(geoEdges, edgeMat));
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        mesh.userData.entityId = entity.id;
-        entityGroup.add(mesh);
-        entities.set(entity.id, mesh);
-        selectable.set(entity.id, mesh);
-        mesh.position.set(entity.location.x + 0.5, 0.36, entity.location.y + 0.5);
+      if (entity.asset?.hash) {
+        const group = visualFor(entity.id, entity.asset.hash);
+        group.position.set(entity.location.x + 0.5, 0.36, entity.location.y + 0.5);
+        group.rotation.y = entity.lockedBy ? Math.PI / 4 : 0;
+      } else {
+        let mesh = entities.get(entity.id);
+        if (!mesh) {
+          mesh = new THREE.Mesh(geoEntity, matObject.clone());
+          mesh.add(new THREE.LineSegments(geoEdges, edgeMat));
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          mesh.userData.entityId = entity.id;
+          entityGroup.add(mesh);
+          entities.set(entity.id, mesh);
+          selectable.set(entity.id, mesh);
+          mesh.position.set(entity.location.x + 0.5, 0.36, entity.location.y + 0.5);
+        }
+        const goal = new THREE.Vector3(entity.location.x + 0.5, 0.36, entity.location.y + 0.5);
+        mesh.position.lerp(goal, Math.min(1, dt * 16));
+        mesh.rotation.y = entity.lockedBy ? Math.PI / 4 : 0;
+        const mat = mesh.material as THREE.MeshLambertMaterial;
+        mat.color.setHex(entity.lockedBy ? 0x9aa0b4 : 0xd4a04a);
+        mat.emissive.setHex(hover === entity.id || selected === entity.id ? 0x6a4a10 : 0x000000);
       }
-      const goal = new THREE.Vector3(entity.location.x + 0.5, 0.36, entity.location.y + 0.5);
-      mesh.position.lerp(goal, Math.min(1, dt * 16));
-      mesh.rotation.y = entity.lockedBy ? Math.PI / 4 : 0;
-      const mat = mesh.material as THREE.MeshLambertMaterial;
-      mat.color.setHex(entity.lockedBy ? 0x9aa0b4 : 0xd4a04a);
-      mat.emissive.setHex(hover === entity.id || selected === entity.id ? 0x6a4a10 : 0x000000);
     }
     for (const [id, mesh] of entities) {
       if (!w.entities[id]) {
@@ -341,6 +370,12 @@ export function createSyncer(scene: THREE.Scene, initial: World, localId: string
         (mesh.material as THREE.Material).dispose();
         entities.delete(id);
         selectable.delete(id);
+      }
+    }
+    for (const id of [...assetGroups.keys()]) {
+      if (!w.entities[id]) {
+        entityGroup.remove(assetGroups.get(id)!);
+        assetGroups.delete(id);
       }
     }
   };
@@ -362,6 +397,8 @@ export function createSyncer(scene: THREE.Scene, initial: World, localId: string
       }
       trails.clear();
       trailGeo.dispose();
+      for (const g of [...assetGroups.values()]) entityGroup.remove(g);
+      assetGroups.clear();
       scene.remove(staticGroup, entityGroup, trailGroup);
     },
   };

@@ -32,7 +32,7 @@ const PICKUP_HOLD_MS = 450;
 export function attachWorldInteractions(
   canvas: HTMLCanvasElement,
   getCamera: () => THREE.Camera,
-  getTargetMeshes: () => ReadonlyMap<string, THREE.Mesh>,
+  getTargetMeshes: () => ReadonlyMap<string, THREE.Object3D>,
   handlers: WorldInteractionHandlers,
 ): () => void {
   const raycaster = new THREE.Raycaster();
@@ -69,8 +69,8 @@ export function attachWorldInteractions(
     if (event.button !== 0) return;
     clearHoldTimer();
     setRay(event.clientX, event.clientY);
-    const meshes = [...getTargetMeshes().values()];
-    const picked = raycaster.intersectObjects(meshes, false)[0]?.object as THREE.Mesh | undefined;
+    const objects = [...getTargetMeshes().values()];
+    const picked = raycaster.intersectObjects(objects, true)[0]?.object as THREE.Object3D | undefined;
     const entityId = typeof picked?.userData.entityId === 'string' ? picked.userData.entityId : null;
     const playerId = typeof picked?.userData.targetId === 'string' ? picked.userData.targetId : null;
     const targetId = entityId ?? playerId;

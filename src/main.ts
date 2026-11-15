@@ -7,6 +7,7 @@ import { createGamepad } from './input/gamepad';
 import { attachActionKeys, type ActionName } from './input/actions';
 import { createScene } from './render/scene';
 import { createSyncer } from './render/sync';
+import { loadBackground } from './render/asset-store';
 import { createCameraRig, CAM_LABEL, CAM_MODES, usesFacing } from './render/camera';
 import { attachWorldInteractions } from './render/interactions';
 import { ensureIdentity } from './ui/login';
@@ -87,6 +88,9 @@ async function boot() {
   const rig = createCameraRig(ROOM_W, ROOM_H, store.get().camera);
   ctx.onResize(rig.resize);
   const syncer = createSyncer(ctx.scene, world, author);
+  void loadBackground('5244534E9CF5B606F2FF513AA00DDB161B0A4826FFD88A0D3BD03AC29247D198').then((tex) => {
+    ctx.scene.background = tex;
+  });
 
   // ───────────── red ─────────────
   let relay: RelayClient | null = null;
@@ -257,6 +261,15 @@ async function boot() {
   const closeDoor = () => {
     doorOpen = false;
     doorDialog.close();
+    // Si cancelas (o cierras) mientras pisas la puerta, te sacas de la celda
+    // para que el checkDoor no te atrape en un bucle de re-apertura.
+    const p = world.players[author];
+    if (p && world.cells[key(p.x, p.y)]?.kind === 'door') {
+      const safeX = Math.max(1, p.x - 1);
+      if (canStep(world, p.x, p.y, safeX - p.x, 0)) {
+        send('MOVE', { x: safeX, y: p.y });
+      }
+    }
   };
 
   // ───────────── acciones ─────────────
@@ -292,6 +305,19 @@ async function boot() {
       return;
     }
     send('ATTACK', { entityId: id });
+  };
+
+  const openLabs = () => {
+    const placements: Array<{ id: string; hash: string; x: number; y: number }> = [
+      { id: 'lab-pino1', hash: '9F00C115B80FD79BE5F3E63A7D09C49D708AB694B1FD798E20630CC00C2E244F', x: 2, y: 2 },
+      { id: 'lab-foliage3', hash: '56A54C08BC3E793E9FEDC540E8DABAF0605B5489E74C5116754A92291E738AF0', x: 8, y: 8 },
+      { id: 'lab-foliage2_medium', hash: 'AA6DC27B1965EA897BF90BFAA1C45B33ECF190B66A243AC5C05E6F57EC7C3429', x: 12, y: 12 },
+      { id: 'lab-foliage2_small', hash: '7755FC8D7972E5E101321315B07C3CFB9EED7EF21676375EECD1EE73C86CDB70', x: 5, y: 13 },
+    ];
+    for (const pl of placements) {
+      send('PLACE', { entityId: pl.id, x: pl.x, y: pl.y, blocksMovement: false, assetHash: pl.hash, assetSize: 0, mimeType: 'model/gltf-binary' });
+    }
+    showToast('labs: modelos 3D en camino…');
   };
 
   const cycleCamera = () => {
@@ -382,6 +408,7 @@ async function boot() {
   const radial = createRadial([
     { id: 'pickdrop', icon: '🎒', label: 'Recoger / soltar', run: doPickDrop },
     { id: 'attack', icon: '⚔️', label: 'Atacar', run: doAttack },
+    { id: 'labs', icon: '🧪', label: 'Labs 3D', run: openLabs },
     { id: 'lock', icon: '🔒', label: 'Bloquear', run: doLock },
     { id: 'camera', icon: '🎥', label: 'Cámara', run: cycleCamera },
     { id: 'log', icon: '📜', label: 'Log de la sala', run: fullLog },
