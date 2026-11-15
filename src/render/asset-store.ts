@@ -37,8 +37,8 @@ export function loadAsset(hash: string): Promise<THREE.Group> {
   const entry = assetPathFor(key);
   const promise = (async (): Promise<THREE.Group> => {
     if (!entry) throw new Error(`asset no encontrado en el store: ${key}`);
-    const res = await fetch(`${import.meta.env.BASE_URL}${entry.path}`);
-    if (!res.ok) throw new Error(`asset fetch falló: ${entry.path} (${res.status})`);
+    const res = await fetch(`${import.meta.env.BASE_URL}${entry}`);
+    if (!res.ok) throw new Error(`asset fetch falló: ${entry} (${res.status})`);
     const buffer = await res.arrayBuffer();
     const loader = new GLTFLoader();
     const gltf = await new Promise<THREE.Group>((resolve, reject) => {

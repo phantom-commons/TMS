@@ -1,4 +1,4 @@
-import { ASSET_INDEX, type AssetEntry } from './asset-manifest';
+import { ASSET_INDEX, type AssetEntry } from '../render/asset-manifest';
 
 export type LabsPanel = {
   open: () => void;

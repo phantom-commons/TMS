@@ -1,5 +1,5 @@
 import './style.css';
-import { ROOM_W, ROOM_H, canStep, createGenesisRoom, key, type World } from './sim/world';
+import { ROOM_W, ROOM_H, canStep, canWalk, createGenesisRoom, key, type World } from './sim/world';
 import { createController } from './input/controller';
 import { createKeyboard } from './input/keyboard';
 import { createTouchPad } from './input/touchpad';
@@ -17,7 +17,7 @@ import { createRadial } from './ui/radial';
 import { createInspector, type InspectorModel } from './ui/inspector';
 import { createDevHud } from './ui/devhud';
 import { createDoorDialog } from './ui/door';
-import { createLabsPanel, type LabsPanel } from './ui/labs';
+import { createLabsPanel } from './ui/labs';
 import { showToast } from './ui/toast';
 import { showHistoryPanel } from './ui/history';
 import { shortPubkey } from './identity/keys';
@@ -235,6 +235,10 @@ async function boot() {
   const navigateToRoom = (targetRaw: string) => {
     if (travelling) return;
     travelling = true;
+    doorDialog.close();
+    doorOpen = false;
+    document.getElementById('labs-overlay')?.remove();
+    document.getElementById('settings-overlay')?.remove();
     const target = targetRaw === 'home' ? home : targetRaw;
     const p = world.players[author];
     if (p && world.cells[key(p.x, p.y)]?.kind === 'door') {
