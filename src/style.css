@@ -93,6 +93,7 @@ body {
   transition: border-color 0.15s;
 }
 .hud-btn:hover { border-color: #9b7bff; }
+.hud-attack { position: fixed; top: auto; right: 28px; bottom: 92px; z-index: 45; }
 
 /* Event-history inspector */
 .history-panel {

@@ -256,14 +256,16 @@ async function boot() {
     });
   };
 
-  const doorDialog = createDoorDialog({ enter: (roomId) => navigateToRoom(roomId) });
+  const doorDialog = createDoorDialog({ enter: (roomId) => navigateToRoom(roomId), onCancel: () => closeDoor() });
   let doorOpen = false;
+  let doorJustClosedAt = 0;
   const openDoor = (dest: string) => {
     if (doorOpen) return;
     doorOpen = true;
     doorDialog.open(dest);
   };
   const closeDoor = () => {
+    doorJustClosedAt = performance.now();
     doorOpen = false;
     doorDialog.close();
     // Si cancelas (o cierras) mientras pisas la puerta, te sacas de la celda
@@ -456,6 +458,15 @@ async function boot() {
   chip.className = 'chip';
   document.body.append(hints, chip);
 
+  // Botón en pantalla para atacar sin abrir el radial (G también lo hace).
+  const attackBtn = document.createElement('button');
+  attackBtn.id = 'hud-attack';
+  attackBtn.className = 'hud-btn';
+  attackBtn.title = 'Atacar (G)';
+  attackBtn.textContent = '⚔️';
+  attackBtn.onclick = doAttack;
+  document.body.append(attackBtn);
+
   const applySettings = (s: Settings) => {
     rig.setMode(s.camera);
     syncer.setHideSelf(s.camera === 'fps');
@@ -483,6 +494,7 @@ async function boot() {
     else if (a === 'radial') radial.toggle();
     else if (a === 'escape') {
       document.getElementById('settings-overlay')?.remove();
+      document.getElementById('labs-overlay')?.remove();
       closeDoor();
       selected = null;
       syncer.setSelected(null);
@@ -575,6 +587,9 @@ async function boot() {
   };
 
   const checkDoor = () => {
+    // tras cerrar manualmente (Esc/Cancelar) damos un respiro para no reabrir
+    // en bucle mientras el jugador sigue pisando la celda de la puerta.
+    if (performance.now() - doorJustClosedAt < 800) return;
     const p = world.players[author];
     if (!p || travelling) return;
     const cell = world.cells[key(p.x, p.y)];

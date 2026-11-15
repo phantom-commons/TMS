@@ -5,8 +5,9 @@
 //
 import { createServer } from 'node:http';
 import { randomBytes } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join, normalize, extname } from 'node:path';
 import { WebSocketServer, type WebSocket } from 'ws';
 import Database from 'better-sqlite3';
 import * as ed from '@noble/ed25519';
@@ -215,7 +216,47 @@ function append(c: Client, raw: unknown): void {
   log(`#${item.rseq}`, room.id, entry.type, entry.author.slice(0, 8), JSON.stringify(entry.payload));
 }
 
+const DIST_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'dist');
+const MIME: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
+  '.map': 'application/json',
+  '.glb': 'model/gltf-binary',
+  '.hdr': 'image/hdr',
+};
+
 const http = createServer((req, res) => {
+  const urlPath = (req.url ?? '/').split('?')[0].split('#')[0];
+  if (req.method === 'GET' && urlPath !== '/health') {
+    const clean = urlPath === '/' ? '/index.html' : urlPath;
+    const target = normalize(join(DIST_DIR, `.${clean}`));
+    const safe = target.startsWith(DIST_DIR) && existsSync(target) ? target : null;
+    if (safe) {
+      const ext = extname(safe).toLowerCase();
+      res.writeHead(200, { 'content-type': MIME[ext] ?? 'application/octet-stream', 'access-control-allow-origin': '*' });
+      res.end(readFileSync(safe));
+      return;
+    }
+    // SPA fallback: cualquier ruta desconocida sirve el index (client-side routing).
+    const index = join(DIST_DIR, 'index.html');
+    if (existsSync(index)) {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'access-control-allow-origin': '*' });
+      res.end(readFileSync(index));
+      return;
+    }
+  }
   if (req.url === '/health') {
     const { n } = qRoomCount.get() as { n: number };
     res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });

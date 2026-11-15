@@ -23,16 +23,13 @@ export type RelayClient = {
   close: () => void;
 };
 
-/** Mismo host que la página; en Codespaces el puerto 5173 pasa a 8787 (hay que ponerlo Public). */
+/** Mismo host que la página: en dev, el proxy de Vite (/ws) lo redirige al relay local. */
 export function defaultRelayUrl(): string {
   const env = (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_RELAY_URL;
   if (env) return env;
   const { protocol, hostname } = location;
   const secure = protocol === 'https:';
-  if (hostname.endsWith('.app.github.dev')) {
-    return `wss://${hostname.replace(/-\d+\./, '-8787.')}`;
-  }
-  return `${secure ? 'wss' : 'ws'}://${hostname}:8787`;
+  return `${secure ? 'wss' : 'ws'}://${hostname}`;
 }
 
 export function authMessage(nonce: string, roomId: string): string {

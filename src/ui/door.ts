@@ -5,16 +5,18 @@ export type DoorDialog = {
 };
 
 /** Diálogo al tocar/acercarse a una puerta: pide el código de la sala destino. */
-export function createDoorDialog(deps: { enter: (roomId: string) => void }): DoorDialog {
+export function createDoorDialog(deps: { enter: (roomId: string) => void; onCancel?: () => void }): DoorDialog {
   const overlay = document.createElement('div');
   overlay.id = 'door-overlay';
   overlay.className = 'login-overlay';
+  const close = () => overlay.remove();
+  overlay.addEventListener('pointerdown', (e) => {
+    if (e.target === overlay) close();
+  });
   const card = document.createElement('div');
   card.className = 'login-card door';
   overlay.append(card);
   document.body.append(overlay);
-
-  const close = () => overlay.remove();
 
   const open = (dest: string) => {
     if (overlay.isConnected) return;
@@ -74,10 +76,11 @@ export function createDoorDialog(deps: { enter: (roomId: string) => void }): Doo
       deps.enter(roomId);
     };
     enter.onclick = submit;
-    cancel.onclick = close;
-    overlay.addEventListener('pointerdown', (e) => {
-      if (e.target === overlay) close();
-    });
+    cancel.onclick = () => {
+      close();
+      // al cancelar también liberamos el estado para que checkDoor no reabra
+      deps.onCancel?.();
+    };
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') submit();
     });
