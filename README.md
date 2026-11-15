@@ -24,6 +24,19 @@ npm test && npm run lint && npm run check
   Nadie puede crear una `home-*` ajena: la sim rechaza un INIT que no firma su dueño.
 - La puerta azul lleva a `lobby`; en el lobby, a tu home.
 
+## Menú y rooms (shell móvil)
+
+La app sin parámetros abre un **shell ligero** (sin Three.js): Inicio · Explorar · Tu Room · Inventario · Perfil.
+Three.js solo se descarga al entrar a `?exp=world` o `?room=<id>`.
+
+- `src/core/room-config.ts` — cada room es una configuración (vista, controles, features, política de permisos). Añadir una room = una entrada en `ROOMS` + registrar su experiencia.
+- `src/core/room-manager.ts` + `experience-registry.ts` — abren/cierran experiencias bajo demanda.
+- `src/core/permissions.ts` — roles (dueño / editor / visitante) y política de la room (`camera: 'locked'` en los juegos).
+- `src/experiences/social/` — **Tu Room**: habitación isométrica con bloques (cama, silla, escritorio, ventana…). El dueño mueve, gira, bloquea y guarda; puede dar permiso de edición a otras claves, hacer la room privada o fijar la cámara. Todo cambio pasa por `applyOp(layout, op, rol)`.
+- `src/experiences/arcade/` — **Snake** y **Salto** (tipo dinosaurio): cámara fija, récords locales, controles adaptativos (`src/input/adaptive.ts`: teclado, táctil con pad/gestos, mando).
+
+Rutas: `#/home`, `#/explore`, `#/inventory`, `#/profile`, `#/room/<id>`.
+
 ## Atrium y escenario 3D
 
 `?room=atrium` (o el botón 🏛 de la puerta) crea una sala con plantilla: el `INIT` solo lleva `layout: 'atrium'`
