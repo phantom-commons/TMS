@@ -1,5 +1,5 @@
 # TMS
-
+.
 Sala compartida en el navegador (Three.js). El estado se reconstruye desde un log firmado y encadenado
 (Ed25519 + SHA-256 + HLC). El relay es tonto: ordena, valida con la misma sim y guarda.
 
