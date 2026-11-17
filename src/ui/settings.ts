@@ -1,7 +1,7 @@
 import { toMnemonic, type Identity } from '../identity/keys';
 import { clearIdentity } from '../identity/storage';
 import { CAM_LABEL, CAM_MODES } from '../render/camera';
-import type { InspectorMode, Settings, SettingsStore, StageStyle } from './settings-store';
+import type { InspectorMode, Settings, SettingsStore, SkyStyle, StageStyle } from './settings-store';
 import { showToast } from './toast';
 
 export type SettingsDeps = {
@@ -39,6 +39,10 @@ const GFX_TOGGLES: ToggleDef[] = [
 
 const NET_TOGGLES: ToggleDef[] = [{ key: 'online', label: 'Conectar al relay (visitas)' }];
 
+const SKIES: Array<[SkyStyle, string]> = [
+  ['simple', 'Simple (ligero)'],
+  ['hdri', 'HDRI (5 MB)'],
+];
 const STAGES: Array<[StageStyle, string]> = [
   ['atrium', 'Atrium (cinemático)'],
   ['classic', 'Clásico'],
@@ -131,6 +135,21 @@ export function attachSettings(deps: SettingsDeps): { open: () => void } {
     }
     card.append(stageRow);
 
+    // ---- cielo ----
+    section('Cielo');
+    const skyRow = document.createElement('div');
+    skyRow.className = 'seg';
+    const skyButtons = new Map<string, HTMLButtonElement>();
+    for (const [mode, label] of SKIES) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = label;
+      b.onclick = () => deps.store.set({ sky: mode });
+      skyButtons.set(mode, b);
+      skyRow.append(b);
+    }
+    card.append(skyRow);
+
     // ---- interruptores ----
     const inputs = new Map<ToggleKey, HTMLInputElement>();
     const addToggles = (title: string, defs: ToggleDef[]) => {
@@ -162,6 +181,7 @@ export function attachSettings(deps: SettingsDeps): { open: () => void } {
       camButtons.forEach((b, mode) => b.classList.toggle('active', s.camera === mode));
       insButtons.forEach((b, mode) => b.classList.toggle('active', s.inspector === mode));
       stageButtons.forEach((b, mode) => b.classList.toggle('active', s.stage === mode));
+      skyButtons.forEach((b, mode) => b.classList.toggle('active', s.sky === mode));
       inputs.forEach((input, key) => (input.checked = s[key]));
     };
     sync(deps.store.get());

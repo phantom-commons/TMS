@@ -1,4 +1,5 @@
 import type { ExperienceFactory } from '../../core/experience-registry';
+import { VIEW_LABEL, resolveView, type ViewKind } from '../../core/room-config';
 import { ROLE_LABEL, canRole, roleOf, type Capability, type Role } from '../../core/permissions';
 import { shortPubkey } from '../../identity/keys';
 import { hexToBytes } from '../../sim/hash';
@@ -17,7 +18,7 @@ import {
   type RoomLayout,
   type Wall,
 } from './model';
-import { drawRoom, fitView, ownerHue, pickItem, pickWallSlot, unprojectFloor, type Pt, type View } from './render';
+import { drawRoom, fitView, ownerHue, pickItem, pickWallSlot, unprojectFloor, type Pt, type RoomView, type View } from './render';
 
 // Tu Room: habitación isométrica 2D (barata en móvil). Dos modos:
 //   Caminar → tu avatar recorre la habitación.
@@ -67,7 +68,7 @@ export const mountPersonalRoom: ExperienceFactory = (ctx) => {
     <div class="pr-banner" hidden><span></span><button type="button">Volver a Dueño</button></div>
     <div class="pr-stage">
       <canvas class="pr-canvas"></canvas>
-      <div class="pr-zoom"><button type="button" data-z="in" aria-label="Acercar">+</button><button type="button" data-z="out" aria-label="Alejar">−</button><button type="button" data-z="reset" aria-label="Centrar">◎</button></div>
+      <div class="pr-zoom"><button type="button" data-z="in" aria-label="Acercar">+</button><button type="button" data-z="out" aria-label="Alejar">−</button><button type="button" data-z="reset" aria-label="Centrar">◎</button><button type="button" class="pr-viewbtn" data-z="view" aria-label="Cambiar vista"></button></div>
       <div class="pr-private" hidden><div class="gf-card"><h2>🔒 Room privada</h2><p>El dueño no permite visitas en este momento.</p></div></div>
     </div>
     <div class="pr-dock">
@@ -124,7 +125,36 @@ export const mountPersonalRoom: ExperienceFactory = (ctx) => {
   ro.observe(stage);
   resize();
 
-  const view = (): View => fitView(cssW, cssH, zoom, panX, panY);
+  // Vista: la room declara cuáles permite; tu elección se guarda por jugador y solo cuenta si puedes mover la cámara.
+  const VIEW_KEY = 'room.my-room.view';
+  let viewPref = ctx.kv.get<string | null>(VIEW_KEY, null);
+  const drawable = (k: ViewKind): k is RoomView => k === 'iso' || k === 'top';
+  const viewKind = (): RoomView => {
+    const k = resolveView(ctx.config, viewPref, can('camera'));
+    return drawable(k) ? k : 'iso';
+  };
+  const choices = (): RoomView[] => ctx.config.view.allowed.filter(drawable);
+  const cycleView = () => {
+    if (!can('camera')) return;
+    const list = choices();
+    if (list.length < 2) return;
+    viewPref = list[(list.indexOf(viewKind()) + 1) % list.length];
+    ctx.kv.set(VIEW_KEY, viewPref);
+    panX = 0;
+    panY = 0;
+    dirty = true;
+    refreshViewBtn();
+  };
+  const refreshViewBtn = () => {
+    const b = root.querySelector<HTMLButtonElement>('.pr-viewbtn');
+    if (!b) return;
+    const list = choices();
+    b.hidden = list.length < 2;
+    const next = list[(list.indexOf(viewKind()) + 1) % Math.max(1, list.length)];
+    b.textContent = viewKind() === 'iso' ? '▦' : '◇';
+    b.title = `Vista actual: ${VIEW_LABEL[viewKind()]} · cambiar a ${VIEW_LABEL[next ?? viewKind()]}`;
+  };
+  const view = (): View => fitView(cssW, cssH, zoom, panX, panY, viewKind());
 
   // ───────────── cámara ─────────────
   const clampCam = () => {
@@ -187,6 +217,7 @@ export const mountPersonalRoom: ExperienceFactory = (ctx) => {
     $<HTMLElement>('.pr-private').hidden = seeing;
     $<HTMLElement>('.pr-camlock').hidden = !layout.cameraLocked;
     $<HTMLElement>('.pr-zoom').hidden = !can('camera') || !seeing;
+    refreshViewBtn();
     $<HTMLElement>('.pr-gear').hidden = !(roleOf({ owner: layout.owner, editors: layout.editors, visitors: layout.visitors }, ctx.author) === 'owner' && !preview);
     const banner = $<HTMLElement>('.pr-banner');
     banner.hidden = preview === null;
@@ -330,6 +361,7 @@ export const mountPersonalRoom: ExperienceFactory = (ctx) => {
     const z = (e.target as HTMLElement).closest<HTMLElement>('[data-z]')?.dataset.z;
     if (z === 'in') zoomBy(1.25);
     else if (z === 'out') zoomBy(0.8);
+    else if (z === 'view') cycleView();
     else if (z === 'reset') {
       zoom = 1;
       panX = 0;

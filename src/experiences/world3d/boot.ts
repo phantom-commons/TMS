@@ -1,3 +1,4 @@
+import type * as THREE from 'three';
 import { ROOM_W, ROOM_H, canStep, canWalk, createGenesisRoom, key, type World } from '../../sim/world';
 import { createController } from '../../input/controller';
 import { createKeyboard } from '../../input/keyboard';
@@ -91,9 +92,26 @@ export async function bootWorld3D(identity: Identity) {
   ctx.onResize(rig.resize);
   const syncer = createSyncer(ctx.scene, world, author);
   const stage = createAtriumStage(ctx.scene);
-  void loadBackground('5244534E9CF5B606F2FF513AA00DDB161B0A4826FFD88A0D3BD03AC29247D198').then((tex) => {
-    ctx.scene.background = tex;
-  });
+  // Cielo: degradado por defecto (sin descargar nada). El panorama HDRI solo se pide si se elige, y solo se ve
+  // con cámaras en perspectiva (1ª/3ª persona): en las ortográficas un panorama no tiene sentido.
+  const HDRI_HASH = '5244534E9CF5B606F2FF513AA00DDB161B0A4826FFD88A0D3BD03AC29247D198';
+  let panorama: THREE.Texture | null = null;
+  let panoramaRequested = false;
+  const applySky = (s: Settings) => {
+    if (s.sky === 'hdri' && !panorama && !panoramaRequested) {
+      panoramaRequested = true;
+      void loadBackground(HDRI_HASH)
+        .then((tex) => {
+          panorama = tex;
+          applySky(store.get());
+        })
+        .catch(() => {
+          panoramaRequested = false;
+          showToast('no se pudo cargar el cielo HDRI');
+        });
+    }
+    ctx.setSky(s.sky === 'hdri' && usesFacing(s.camera) ? panorama : null);
+  };
 
   // ───────────── red ─────────────
   let relay: RelayClient | null = null;
@@ -498,6 +516,7 @@ export async function bootWorld3D(identity: Identity) {
     hud.applySettings(s);
     stage.setEnabled(s.stage === 'atrium');
     ctx.setLook(s.stage);
+    applySky(s);
     devHud.setVisible(s.dev);
     if (s.online) startRelay();
     else stopRelay();
@@ -529,6 +548,10 @@ export async function bootWorld3D(identity: Identity) {
 
   // ───────────── interacción con el ratón y toque ─────────────
   attachWorldInteractions(canvas, () => rig.camera(), syncer.entityMeshes, {
+    // arrastrar para mirar en 1ª y 3ª persona (~200° de giro por un barrido de lado a lado)
+    canLook: () => usesFacing(rig.mode),
+    onLook: (dx) => rig.look((dx * Math.PI * 1.1) / Math.max(320, window.innerWidth)),
+    onLookEnd: () => rig.lookEnd(),
     onHover: (id) => {
       hoverId = id;
       syncer.setHover(id);

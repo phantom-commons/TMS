@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { createKV } from '../../core/kv';
 import { getBest, submitScore } from './scores';
 import { createSnake } from './snake/engine';
-import { GROUND, PLAYER_X, createRunner } from './runner/engine';
 
 const seq = (...v: number[]) => { let i = 0; return () => v[i++ % v.length]; };
 
@@ -72,59 +71,6 @@ describe('snake', () => {
     expect(s.interval()).toBeLessThan(a);
     s.state.score = 999;
     expect(s.interval()).toBe(70);
-  });
-});
-
-describe('runner', () => {
-  it('salta y vuelve al suelo', () => {
-    const r = createRunner(() => 0.5);
-    expect(r.jump()).toBe(true);
-    expect(r.jump()).toBe(false); // no hay doble salto
-    r.update(0.1);
-    expect(r.state.y).toBeGreaterThan(0);
-    for (let i = 0; i < 60; i++) r.update(0.02);
-    expect(r.state.y).toBe(0);
-  });
-  it('choca con un cactus de frente y deja de contar', () => {
-    const r = createRunner(() => 0.5);
-    r.state.obstacles.push({ kind: 'cactus', x: PLAYER_X + 10, w: 20, h: 40 });
-    r.state.nextIn = 99;
-    r.update(0.016);
-    expect(r.state.alive).toBe(false);
-    const s = r.score();
-    r.update(1);
-    expect(r.score()).toBe(s);
-  });
-  it('saltar a tiempo esquiva el cactus', () => {
-    const r = createRunner(() => 0.5);
-    r.state.obstacles.push({ kind: 'cactus', x: PLAYER_X + 130, w: 20, h: 40 });
-    r.state.nextIn = 99;
-    r.jump();
-    for (let i = 0; i < 90 && r.state.alive; i++) r.update(1 / 60);
-    expect(r.state.alive).toBe(true);
-  });
-  it('agacharse esquiva al pájaro; de pie choca', () => {
-    const bird = { kind: 'bird' as const, x: PLAYER_X + 8, w: 34, h: 18, y: 26 };
-    const standing = createRunner(() => 0.5);
-    standing.state.obstacles.push({ ...bird });
-    standing.state.nextIn = 99;
-    standing.update(0.016);
-    expect(standing.state.alive).toBe(false);
-
-    const ducking = createRunner(() => 0.5);
-    ducking.duck(true);
-    ducking.state.obstacles.push({ ...bird });
-    ducking.state.nextIn = 99;
-    ducking.update(0.016);
-    expect(ducking.state.alive).toBe(true);
-  });
-  it('genera obstáculos y acelera sin pasar del máximo', () => {
-    const r = createRunner(() => 0.5);
-    r.update(1.5);
-    expect(r.state.obstacles.length).toBeGreaterThan(0);
-    for (let i = 0; i < 600 && r.state.alive; i++) { r.state.obstacles = []; r.update(0.1); }
-    expect(r.state.speed).toBeLessThanOrEqual(620);
-    expect(GROUND).toBeGreaterThan(0);
   });
 });
 

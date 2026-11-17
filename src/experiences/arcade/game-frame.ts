@@ -3,7 +3,14 @@ import type { ExperienceContext } from '../../core/experience-registry';
 // Marco común de los juegos arcade: barra superior, marcador, lienzo escalado, avisos y zona de controles.
 // Aquí vive el «cámara fija»: si la política de la room la bloquea, el marco anula zoom, pellizco y scroll.
 
-export type Overlay = { title: string; body?: string; button: string; secondary?: { label: string; run: () => void } };
+export type Overlay = {
+  title: string;
+  body?: string;
+  button: string;
+  secondary?: { label: string; run: () => void };
+  /** acción adicional (p. ej. ⚙ Reglas), encima del botón secundario */
+  extra?: { label: string; run: () => void };
+};
 
 export type GameFrame = {
   canvas: HTMLCanvasElement;
@@ -139,6 +146,15 @@ export function createGameFrame(ctx: ExperienceContext, opts: { title: string; l
       b.className = 'gf-primary';
       b.textContent = o.button;
       card.append(b);
+      if (o.extra) {
+        const x = document.createElement('button');
+        x.type = 'button';
+        x.className = 'gf-secondary';
+        x.dataset.secondary = '1';
+        x.textContent = o.extra.label;
+        x.onclick = o.extra.run;
+        card.append(x);
+      }
       if (o.secondary) {
         const s = document.createElement('button');
         s.type = 'button';

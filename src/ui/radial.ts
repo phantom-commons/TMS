@@ -7,7 +7,11 @@ export type Radial = {
   dispose: () => void;
 };
 
-/** Menú radial: un botón fijo abajo a la derecha que despliega sus acciones en arco. */
+/**
+ * Menú de acciones: un botón fijo abajo a la derecha que abre un panel en rejilla.
+ * (Antes se desplegaba en arco: con 8 botones de 48 px en un arco de 104 px de radio se solapaban y se pulsaba el equivocado.)
+ * Cada acción es un botón grande con su etiqueta a la vista.
+ */
 export function createRadial(items: RadialItem[]): Radial {
   const root = document.createElement('div');
   root.className = 'radial';
@@ -15,23 +19,24 @@ export function createRadial(items: RadialItem[]): Radial {
   hub.type = 'button';
   hub.className = 'radial-hub';
   hub.title = 'Acciones (R)';
+  hub.setAttribute('aria-label', 'Acciones');
+  hub.setAttribute('aria-expanded', 'false');
   hub.textContent = '✦';
-  root.append(hub);
+
+  const panel = document.createElement('div');
+  panel.className = 'radial-panel';
+  panel.setAttribute('role', 'menu');
+  root.append(panel, hub);
 
   const badges = new Map<string, HTMLElement>();
-  const n = items.length;
-  const radius = 104;
-  items.forEach((item, i) => {
-    // arco de 90° hacia arriba-izquierda (de 180° a 270°)
-    const a = Math.PI + (n === 1 ? Math.PI / 4 : (i / (n - 1)) * (Math.PI / 2));
+  for (const item of items) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'radial-item';
+    b.setAttribute('role', 'menuitem');
     b.title = item.label;
-    b.style.setProperty('--tx', `${Math.cos(a) * radius}px`);
-    b.style.setProperty('--ty', `${Math.sin(a) * radius}px`);
-    b.style.transitionDelay = `${i * 25}ms`;
     const icon = document.createElement('span');
+    icon.className = 'radial-ico';
     icon.textContent = item.icon;
     const label = document.createElement('small');
     label.textContent = item.label;
@@ -40,22 +45,26 @@ export function createRadial(items: RadialItem[]): Radial {
     badges.set(item.id, badge);
     b.append(icon, label, badge);
     b.onclick = () => {
-      root.classList.remove('open');
+      setOpen(false);
       item.run();
     };
-    root.append(b);
-  });
+    panel.append(b);
+  }
 
-  hub.onclick = () => root.classList.toggle('open');
+  const setOpen = (open: boolean) => {
+    root.classList.toggle('open', open);
+    hub.setAttribute('aria-expanded', String(open));
+  };
+  hub.onclick = () => setOpen(!root.classList.contains('open'));
   const outside = (e: PointerEvent) => {
-    if (!root.contains(e.target as Node)) root.classList.remove('open');
+    if (!root.contains(e.target as Node)) setOpen(false);
   };
   window.addEventListener('pointerdown', outside);
   document.body.append(root);
 
   return {
     setVisible: (v) => void (root.hidden = !v),
-    toggle: () => void root.classList.toggle('open'),
+    toggle: () => setOpen(!root.classList.contains('open')),
     setBadge(id, text) {
       const el = badges.get(id);
       if (!el) return;

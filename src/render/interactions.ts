@@ -8,6 +8,11 @@ export type WorldInteractionHandlers = {
   onHover?: (id: string | null) => void;
   onDragPreview?: (cell: { x: number; y: number } | null) => void;
   onInteractionLock?: (locked: boolean) => void;
+  /** ¿arrastrar sobre el mundo mueve la cámara ahora? (1ª/3ª persona) */
+  canLook?: () => boolean;
+  /** movimiento del arrastre en píxeles desde el último aviso (el primero lleva todo lo recorrido) */
+  onLook?: (dx: number, dy: number) => void;
+  onLookEnd?: () => void;
 };
 
 type PointerStart = {
@@ -19,6 +24,7 @@ type PointerStart = {
   entityId: string | null;
   pickedUp: boolean;
   moved: boolean;
+  looking: boolean;
   pointerId: number;
 };
 
@@ -84,6 +90,7 @@ export function attachWorldInteractions(
       entityId,
       pickedUp: false,
       moved: false,
+      looking: false,
       pointerId: event.pointerId,
     };
 
@@ -103,6 +110,8 @@ export function attachWorldInteractions(
 
   const onPointerMove = (event: PointerEvent) => {
     if (!down || down.pointerId !== event.pointerId) return;
+    const prevX = down.lastX;
+    const prevY = down.lastY;
     down.lastX = event.clientX;
     down.lastY = event.clientY;
     const distance = Math.hypot(event.clientX - down.x, event.clientY - down.y);
@@ -110,7 +119,19 @@ export function attachWorldInteractions(
       down.moved = true;
       if (!down.pickedUp) clearHoldTimer();
     }
-    if (down.pickedUp) handlers.onDragPreview?.(cellAt(event.clientX, event.clientY));
+    if (down.pickedUp) {
+      handlers.onDragPreview?.(cellAt(event.clientX, event.clientY));
+      return;
+    }
+    // arrastrar sin haber recogido nada = mirar (solo si la cámara gira)
+    if (down.moved && handlers.canLook?.()) {
+      if (!down.looking) {
+        down.looking = true;
+        handlers.onLook?.(event.clientX - down.x, event.clientY - down.y);
+      } else {
+        handlers.onLook?.(event.clientX - prevX, event.clientY - prevY);
+      }
+    }
   };
 
   const onPointerUp = (event: PointerEvent) => {
@@ -118,6 +139,11 @@ export function attachWorldInteractions(
     const start = down;
     down = null;
     clearHoldTimer();
+    if (start.looking) {
+      handlers.onLookEnd?.();
+      clearPreview();
+      return;
+    }
 
     if (start.pickedUp && start.entityId) {
       handlers.onInteractionLock?.(false);
@@ -143,6 +169,7 @@ export function attachWorldInteractions(
   const onPointerCancel = (event: PointerEvent) => {
     if (down && down.pointerId === event.pointerId) {
       if (down.pickedUp) handlers.onInteractionLock?.(false);
+      if (down.looking) handlers.onLookEnd?.();
       down = null;
     }
     clearHoldTimer();

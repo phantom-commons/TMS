@@ -2,11 +2,23 @@ import type { RoomPolicy } from './permissions';
 
 // Una Room es una configuración declarativa. El motor no cambia: cada experiencia declara qué capacidades usa.
 //   Room       → el espacio, su contenido y sus reglas   (este archivo)
-//   View       → cómo se dibuja                          (view.mode)
+//   View       → cómo se dibuja; la room declara qué vistas permite y el jugador elige entre ellas (view.allowed)
 //   Experience → qué puede hacer el usuario dentro       (experience → experience-registry.ts)
 
 export type RoomType = 'home' | 'social' | 'explorer' | 'arcade' | 'world';
-export type ViewMode = 'ui' | '2d' | 'isometric' | '3d';
+/** Cómo se ve una room. Una room permite varias; el jugador elige una (si la room y su rol lo dejan). */
+export type ViewKind = 'ui' | 'side' | 'top' | 'iso' | 'third' | 'fps';
+export const VIEW_LABEL: Record<ViewKind, string> = {
+  ui: 'Menú',
+  side: 'Lateral',
+  top: 'Cenital',
+  iso: 'Isométrica',
+  third: 'Tercera persona',
+  fps: 'Primera persona',
+};
+
+/** solo: cada jugador tiene su copia y nada se sincroniza. shared: la room es de todos (registro firmado + relay). */
+export type RoomMode = 'solo' | 'shared';
 
 /** Esquema de controles que la experiencia pide a input/adaptive.ts */
 export type InputScheme = 'none' | 'pointer' | 'dpad' | 'jump' | 'world';
@@ -34,7 +46,16 @@ export type RoomConfig = {
   /** 'inline': se monta dentro del shell. 'page': usa su propia página (motor 3D) */
   launch: 'inline' | 'page';
   href?: string;
-  view: { mode: ViewMode; camera: 'fixed' | 'free'; controls: InputScheme };
+  view: {
+    /** vistas que el autor permite, sin repetir */
+    allowed: readonly ViewKind[];
+    /** vista inicial, y la única si la cámara está bloqueada */
+    default: ViewKind;
+    controls: InputScheme;
+  };
+  mode: RoomMode;
+  /** subdivisiones enteras por casilla (1 = casilla entera). La lógica sigue siendo entera: solo cambia la precisión. */
+  resolution: number;
   features: RoomFeatures;
   policy: RoomPolicy;
 };
@@ -61,7 +82,9 @@ export const ROOMS: readonly RoomConfig[] = [
     type: 'home',
     experience: 'home',
     launch: 'inline',
-    view: { mode: 'ui', camera: 'fixed', controls: 'none' },
+    view: { allowed: ['ui'], default: 'ui', controls: 'none' },
+    mode: 'solo',
+    resolution: 1,
     features: { ...none, inventory: true, profile: true, interactions: true, scores: true },
     policy: { camera: 'locked', edit: 'none' },
   },
@@ -73,7 +96,9 @@ export const ROOMS: readonly RoomConfig[] = [
     type: 'social',
     experience: 'personal-room',
     launch: 'inline',
-    view: { mode: 'isometric', camera: 'free', controls: 'pointer' },
+    view: { allowed: ['iso', 'top'], default: 'iso', controls: 'pointer' },
+    mode: 'solo',
+    resolution: 1,
     features: { ...none, avatar: true, inventory: true, profile: true, interactions: true },
     policy: { camera: 'free', edit: 'access' },
   },
@@ -85,7 +110,9 @@ export const ROOMS: readonly RoomConfig[] = [
     type: 'arcade',
     experience: 'snake',
     launch: 'inline',
-    view: { mode: '2d', camera: 'fixed', controls: 'dpad' },
+    view: { allowed: ['top'], default: 'top', controls: 'dpad' },
+    mode: 'solo',
+    resolution: 1,
     features: { ...none, scores: true },
     policy: { camera: 'locked', edit: 'none' },
   },
@@ -97,7 +124,9 @@ export const ROOMS: readonly RoomConfig[] = [
     type: 'arcade',
     experience: 'runner',
     launch: 'inline',
-    view: { mode: '2d', camera: 'fixed', controls: 'jump' },
+    view: { allowed: ['side'], default: 'side', controls: 'jump' },
+    mode: 'solo',
+    resolution: 1,
     features: { ...none, scores: true },
     policy: { camera: 'locked', edit: 'none' },
   },
@@ -110,7 +139,9 @@ export const ROOMS: readonly RoomConfig[] = [
     experience: 'world3d',
     launch: 'page',
     href: '?exp=world',
-    view: { mode: '3d', camera: 'free', controls: 'world' },
+    view: { allowed: ['third', 'fps', 'iso', 'top'], default: 'iso', controls: 'world' },
+    mode: 'shared',
+    resolution: 1,
     features: { ...none, avatar: true, chat: true, multiplayer: true, physics: true, minimap: true, interactions: true },
     policy: { camera: 'free', edit: 'access' },
   },
@@ -123,7 +154,9 @@ export const ROOMS: readonly RoomConfig[] = [
     experience: 'world3d',
     launch: 'page',
     href: '?room=atrium',
-    view: { mode: '3d', camera: 'free', controls: 'world' },
+    view: { allowed: ['third', 'fps', 'iso', 'top'], default: 'iso', controls: 'world' },
+    mode: 'shared',
+    resolution: 1,
     features: { ...none, avatar: true, chat: true, multiplayer: true, physics: true, minimap: true, interactions: true },
     policy: { camera: 'free', edit: 'access' },
   },
@@ -139,13 +172,38 @@ export const TYPE_LABEL: Record<RoomType, string> = {
   world: 'Mundo 3D',
 };
 
+/** Errores de una configuración (vacío = válida). */
+export function validateRoomConfig(c: RoomConfig): string[] {
+  const errs: string[] = [];
+  const { allowed } = c.view;
+  if (allowed.length === 0) errs.push('view.allowed vacío');
+  if (new Set(allowed).size !== allowed.length) errs.push('view.allowed repetido');
+  for (const v of allowed) if (!(v in VIEW_LABEL)) errs.push(`vista desconocida: ${String(v)}`);
+  if (!allowed.includes(c.view.default)) errs.push('view.default no está entre las vistas permitidas');
+  if (!Number.isInteger(c.resolution) || c.resolution < 1 || c.resolution > 16) errs.push('resolution debe ser un entero entre 1 y 16');
+  if (c.mode === 'shared' && !c.features.multiplayer) errs.push('una room compartida necesita features.multiplayer');
+  if (c.mode === 'solo' && c.features.multiplayer) errs.push('una room en solitario no puede tener features.multiplayer');
+  return errs;
+}
+
+/**
+ * Vista efectiva: la preferida del jugador solo cuenta si la room la permite y puede elegir
+ * (cámara libre y rol con capacidad de cámara). Si no, manda la vista por defecto del autor.
+ */
+export function resolveView(c: RoomConfig, preferred: string | null | undefined, canChoose: boolean): ViewKind {
+  if (!canChoose || c.policy.camera === 'locked') return c.view.default;
+  return c.view.allowed.find((v) => v === preferred) ?? c.view.default;
+}
+
 /** Etiquetas cortas de lo que declara una room (chips de Explorar). */
 export function roomBadges(c: RoomConfig): string[] {
   const out: string[] = [];
-  out.push(c.view.mode === 'isometric' ? 'isométrica' : c.view.mode === '3d' ? '3D' : c.view.mode === '2d' ? '2D' : 'UI');
+  const { allowed } = c.view;
+  if (allowed.length > 1 && c.policy.camera === 'free') out.push(`${allowed.length} vistas`);
+  else out.push(VIEW_LABEL[c.view.default].toLowerCase());
   if (c.policy.camera === 'locked') out.push('📷 cámara fija');
   if (c.policy.edit === 'access') out.push('editable');
   if (c.features.scores) out.push('récords');
-  if (c.features.multiplayer) out.push('multijugador');
+  out.push(c.mode === 'shared' ? 'multijugador' : 'en solitario');
   return out;
 }

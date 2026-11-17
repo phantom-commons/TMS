@@ -1,5 +1,5 @@
 # TMS
-.
+
 Sala compartida en el navegador (Three.js). El estado se reconstruye desde un log firmado y encadenado
 (Ed25519 + SHA-256 + HLC). El relay es tonto: ordena, valida con la misma sim y guarda.
 
@@ -24,6 +24,10 @@ npm test && npm run lint && npm run check
   Nadie puede crear una `home-*` ajena: la sim rechaza un INIT que no firma su dueño.
 - La puerta azul lleva a `lobby`; en el lobby, a tu home.
 
+## Cuenta: invitado → guardada
+
+Al abrir no hay pantalla de registro: se crea una clave de **invitado** (`Invitado-xxxx`), recordada en este dispositivo, y se entra directo al menú. Mientras no se guarde, Inicio muestra un aviso. En **Perfil → Guardar cuenta**: se ven las 24 palabras, se confirman 3 al azar y se elige un `@usuario` y una contraseña (8+) que cifran la clave en este navegador (después se pide la contraseña al abrir). **Ya tengo cuenta** importa unas 24 palabras en otro dispositivo. La identidad es la clave; el `@usuario` es una etiqueta local hasta que un relay pueda reservarlo. Lógica en `src/identity/account.ts`, diálogos en `src/shell/account-dialog.ts`.
+
 ## Menú y rooms (shell móvil)
 
 La app sin parámetros abre un **shell ligero** (sin Three.js): Inicio · Explorar · Tu Room · Inventario · Perfil.
@@ -33,9 +37,23 @@ Three.js solo se descarga al entrar a `?exp=world` o `?room=<id>`.
 - `src/core/room-manager.ts` + `experience-registry.ts` — abren/cierran experiencias bajo demanda.
 - `src/core/permissions.ts` — roles (dueño / editor / visitante) y política de la room (`camera: 'locked'` en los juegos).
 - `src/experiences/social/` — **Tu Room**: habitación isométrica con bloques (cama, silla, escritorio, ventana…). El dueño mueve, gira, bloquea y guarda; puede dar permiso de edición a otras claves, hacer la room privada o fijar la cámara. Todo cambio pasa por `applyOp(layout, op, rol)`.
+- **Vistas por room** (`src/core/room-config.ts`): cada room declara `view.allowed` y `view.default`, además de `mode` (`solo`/`shared`) y `resolution` (subdivisiones enteras por casilla). `resolveView` decide la vista efectiva: la elección del jugador solo cuenta si la room la permite y la cámara no está bloqueada. En Tu Room, el botón ◇/▦ alterna isométrica ↔ cenital (se guarda por jugador); en el resto de rooms la lista ya es declarativa, pero el motor 3D aún no la aplica.
 - `src/experiences/arcade/` — **Snake** y **Salto** (tipo dinosaurio): cámara fija, récords locales, controles adaptativos (`src/input/adaptive.ts`: teclado, táctil con pad/gestos, mando).
 
 Rutas: `#/home`, `#/explore`, `#/inventory`, `#/profile`, `#/room/<id>`.
+
+## Nodos y reglas (sim entera)
+
+`src/sim/nodes/` es el núcleo de reglas ajustables. Un **tipo de nodo** es código auditado (esquema en `catalog.ts`, comportamiento en `engine.ts`);
+una **instancia** es solo datos dentro de un **manifiesto** (`manifest.ts`: árbol `world / player / prefabs`). Un manifiesto no puede traer comportamiento nuevo.
+
+- `params.ts` — parámetros con esquema (mín/máx/defecto): validan, se acotan y generan la interfaz de sliders (`experiences/arcade/rules-panel.ts`).
+- `engine.ts` — todo entero: punto fijo (`FP`), ticks fijos, semilla dentro del estado. Mismas reglas + semilla + entradas = mismo `simHash`.
+- `manifestFingerprint` — huella del árbol + versión de cada tipo de nodo: dos clientes con la misma huella ejecutan las mismas reglas.
+- `presets/runner.ts` — **Salto** como datos puros (gravedad, salto, vida, generador, movimiento, daño). Snake sigue con su motor propio.
+
+Rutas de entrada: sin parámetros abre el shell; `?exp=world` / `?room=<id>` el mundo 3D.
+En el 3D: arrastrar para mirar (1ª/3ª persona, se ajusta a cuartos de vuelta), menú de acciones en rejilla, y cielo simple u HDRI en Ajustes.
 
 ## Atrium y escenario 3D
 

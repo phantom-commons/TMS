@@ -1,5 +1,5 @@
 import { toMnemonic } from '../identity/keys';
-import { clearIdentity } from '../identity/storage';
+import { forgetHere, openAccountDialog } from './account-dialog';
 import { getBest } from '../experiences/arcade/scores';
 import { homeRoomId } from '../sim/worldgen';
 import type { ShellApi } from './shell';
@@ -10,6 +10,11 @@ export function renderProfile(api: ShellApi): HTMLElement {
   const home = homeRoomId(api.author);
   el.innerHTML = `
     <header class="home-head"><div class="avatar"></div><div><small>Perfil</small><h1></h1></div></header>
+    <div class="panel acct-panel">
+      <h2 class="sec">Cuenta</h2>
+      <p class="lead acct-state"></p>
+      <div class="row"><button type="button" data-save>Guardar cuenta</button><button type="button" data-import>Ya tengo cuenta</button></div>
+    </div>
     <div class="panel">
       <h2 class="sec">Identidad</h2>
       <dl>
@@ -31,6 +36,14 @@ export function renderProfile(api: ShellApi): HTMLElement {
       <div class="mnemonic" hidden></div>
       <div class="row"><button type="button" data-phrase>Ver mis 24 palabras</button><button type="button" class="danger" data-logout>Olvidar identidad aquí</button></div>
     </div>`;
+  const saved = api.identity.saved !== false;
+  el.querySelector('.acct-state')!.textContent = saved
+    ? `Cuenta guardada como ${api.identity.username}. Tu identidad son tus 24 palabras: guárdalas fuera de este navegador.`
+    : 'Estás jugando como invitado. Todo se guarda en este navegador, pero si borras sus datos lo pierdes. Guarda tu cuenta para poder recuperarla.';
+  el.querySelector<HTMLElement>('[data-save]')!.hidden = saved;
+  el.querySelector<HTMLElement>('[data-import]')!.textContent = saved ? 'Entrar con otra cuenta' : 'Ya tengo cuenta';
+  el.querySelector<HTMLElement>('[data-save]')!.onclick = () => openAccountDialog(api, 'save');
+  el.querySelector<HTMLElement>('[data-import]')!.onclick = () => openAccountDialog(api, 'import');
   el.querySelector('h1')!.textContent = api.identity.username;
   el.querySelector('.avatar')!.textContent = api.identity.username.slice(0, 1).toUpperCase();
   el.querySelector('.pk')!.textContent = api.author;
@@ -54,10 +67,11 @@ export function renderProfile(api: ShellApi): HTMLElement {
     if (!mn.hidden) mn.textContent = toMnemonic(api.identity.privateKey);
   };
   el.querySelector<HTMLElement>('[data-logout]')!.onclick = async () => {
-    if (!confirm('Se borrará la identidad de este navegador. Necesitarás tus 24 palabras para volver. ¿Seguro?')) return;
-    await clearIdentity();
-    location.hash = '';
-    location.reload();
+    const warn = saved
+      ? 'Se borrará la cuenta de este navegador. Necesitarás tus 24 palabras para volver. ¿Seguro?'
+      : 'Eres invitado y no has guardado tu cuenta: si sigues, pierdes todo lo de este navegador para siempre. ¿Seguro?';
+    if (!confirm(warn)) return;
+    await forgetHere();
   };
   return el;
 }

@@ -93,6 +93,8 @@ body {
   transition: border-color 0.15s;
 }
 .hud-btn:hover { border-color: #9b7bff; }
+/* volver al menú: arriba a la izquierda, para no tapar el ⚙ de Ajustes (arriba a la derecha) */
+.hud-btn.menu-back { right: auto; left: 16px; }
 
 /* Event-history inspector */
 .history-panel {
@@ -195,28 +197,35 @@ body {
 .switch input:checked { background: #9b7bff; }
 .switch input:checked::after { transform: translateX(14px); }
 
-/* menú radial */
+/* menú de acciones: botón + panel en rejilla (botones grandes, etiqueta visible) */
 .radial { position: fixed; right: 28px; bottom: 28px; z-index: 40; width: 56px; height: 56px; }
 .radial[hidden] { display: none; }
-.radial button { font-family: system-ui, sans-serif; cursor: pointer; }
+.radial button { font-family: system-ui, sans-serif; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .radial-hub {
   position: absolute; inset: 0; border-radius: 50%; border: 1px solid #3a3f4f; color: #d9ccff;
   background: rgba(26, 29, 36, 0.92); font-size: 22px; transition: transform 0.2s, border-color 0.15s;
 }
 .radial-hub:hover { border-color: #9b7bff; }
-.radial.open .radial-hub { transform: rotate(45deg); }
-.radial-item {
-  position: absolute; left: 4px; top: 4px; width: 48px; height: 48px; border-radius: 50%;
-  border: 1px solid #343947; background: rgba(26, 29, 36, 0.95); color: #e8e9ee;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0;
-  opacity: 0; pointer-events: none; transform: translate(0, 0) scale(0.4);
-  transition: transform 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2), opacity 0.18s, border-color 0.15s;
+.radial.open .radial-hub { transform: rotate(45deg); border-color: #9b7bff; }
+.radial-panel {
+  position: absolute; right: 0; bottom: 68px; width: max-content;
+  display: grid; grid-template-columns: repeat(4, 84px); gap: 8px; padding: 10px;
+  background: rgba(20, 23, 31, 0.96); border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 16px;
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  opacity: 0; pointer-events: none; transform: translateY(8px) scale(0.97); transform-origin: bottom right;
+  transition: opacity 0.16s, transform 0.16s;
 }
-.radial-item span { font-size: 18px; line-height: 1; }
-.radial-item small { position: absolute; top: 100%; margin-top: 3px; font-size: 10px; color: #aeb4c4; white-space: nowrap; text-shadow: 0 1px 2px #000; }
-.radial-item em { position: absolute; top: -3px; right: -3px; min-width: 16px; height: 16px; border-radius: 8px; background: #9b7bff; color: #111318; font: 600 10px/16px system-ui; text-align: center; font-style: normal; }
-.radial.open .radial-item { opacity: 1; pointer-events: auto; transform: translate(var(--tx), var(--ty)) scale(1); }
-.radial-item:hover { border-color: #9b7bff; }
+.radial.open .radial-panel { opacity: 1; pointer-events: auto; transform: none; }
+.radial-item {
+  position: relative; min-height: 68px; padding: 8px 4px 6px; border-radius: 12px;
+  border: 1px solid #343947; background: rgba(255, 255, 255, 0.04); color: #e8e9ee;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.radial-item:hover, .radial-item:active { border-color: #9b7bff; background: rgba(155, 123, 255, 0.16); }
+.radial-ico { font-size: 22px; line-height: 1; }
+.radial-item small { font-size: 11px; line-height: 1.15; color: #c4c9d6; text-align: center; overflow-wrap: anywhere; }
+.radial-item em { position: absolute; top: 4px; right: 4px; min-width: 16px; height: 16px; border-radius: 8px; background: #9b7bff; color: #111318; font: 600 10px/16px system-ui; text-align: center; font-style: normal; }
 
 .inspector[hidden], .dev-hud[hidden] { display: none; }
 
@@ -322,8 +331,15 @@ body {
     padding: 8px 10px;
   }
 
+  .hud-btn.menu-back {
+    right: auto;
+    left: max(12px, env(safe-area-inset-left));
+  }
+
   .radial {
     right: max(18px, env(safe-area-inset-right));
     bottom: max(22px, env(safe-area-inset-bottom));
   }
+  .radial-panel { grid-template-columns: repeat(2, 92px); }
+  .radial-item { min-height: 72px; }
 }

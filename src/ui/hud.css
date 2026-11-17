@@ -57,11 +57,11 @@
 .hud-status {
   position: absolute;
   top: 16px;
-  left: 16px;
+  left: 64px; /* deja sitio al botón de volver al menú */
   display: flex;
   align-items: center;
   gap: 8px;
-  max-width: min(520px, calc(100vw - 150px));
+  max-width: min(520px, calc(100vw - 200px));
   padding: 5px 12px;
   border-radius: 999px;
   white-space: nowrap;
@@ -259,7 +259,7 @@
 
 /* ───────── móvil ───────── */
 @media (max-width: 768px) {
-  .hud-status { top: max(12px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); max-width: calc(100vw - 24px); font-size: 11px; }
+  .hud-status { top: max(12px, env(safe-area-inset-top)); left: calc(max(12px, env(safe-area-inset-left)) + 48px); max-width: calc(100vw - 132px); font-size: 11px; }
   .hud-cam, .hud-link { display: none; }
   .hud-tr { top: calc(max(12px, env(safe-area-inset-top)) + 40px); right: max(12px, env(safe-area-inset-right)); }
   .hud-map-canvas { width: 112px; }
@@ -267,7 +267,8 @@
   .hud-legend { display: none; }
   .hud-bottom { bottom: 170px; }
   /* los botones rápidos pasan a la columna derecha, bajo el minimapa */
-  .hud-dock { right: max(12px, env(safe-area-inset-right)); bottom: auto; top: 50%; transform: translateY(-50%); flex-direction: column; border-radius: 22px; }
+  .hud-dock { right: max(12px, env(safe-area-inset-right)); bottom: auto; top: 50%; transform: translateY(-50%); flex-direction: column; gap: 12px; padding: 7px; border-radius: 30px; }
+  .hud-dock-btn { width: 52px; height: 52px; font-size: 22px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

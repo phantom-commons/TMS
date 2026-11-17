@@ -8,15 +8,37 @@ export type SceneCtx = {
   setFog: (on: boolean) => void;
   /** 'atrium': tonemapping cinematográfico y luz cálida; 'classic': el aspecto original. */
   setLook: (look: 'atrium' | 'classic') => void;
+  /** panorama equirectangular como cielo, o null para el degradado simple */
+  setSky: (panorama: THREE.Texture | null) => void;
   onResize: (cb: () => void) => void;
   dispose: () => void;
 };
 
 const BG = 0x111318;
 
+/** Degradado vertical barato (una textura de 2×256) que sustituye al cielo HDRI. Su base coincide con el color de la niebla. */
+function makeGradientSky(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 2;
+  c.height = 256;
+  const g = c.getContext('2d');
+  if (g) {
+    const gr = g.createLinearGradient(0, 0, 0, 256);
+    gr.addColorStop(0, '#2c3556');
+    gr.addColorStop(0.5, '#1c2238');
+    gr.addColorStop(1, '#111318');
+    g.fillStyle = gr;
+    g.fillRect(0, 0, 2, 256);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 export function createScene(canvas: HTMLCanvasElement, worldW: number, worldH: number): SceneCtx {
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(BG);
+  const gradientSky = makeGradientSky();
+  scene.background = gradientSky;
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -65,8 +87,18 @@ export function createScene(canvas: HTMLCanvasElement, worldW: number, worldH: n
       sun.color.setHex(atrium ? 0xffe6c4 : 0xffffff);
       sun.intensity = atrium ? 1.35 : 1.1;
     },
+    setSky(panorama) {
+      if (panorama) {
+        // sin este mapeo Three pinta el HDR como una foto plana pegada a la pantalla, no como un cielo
+        panorama.mapping = THREE.EquirectangularReflectionMapping;
+        scene.background = panorama;
+      } else {
+        scene.background = gradientSky;
+      }
+    },
     onResize: (cb) => void listeners.push(cb),
     dispose() {
+      gradientSky.dispose();
       window.removeEventListener('resize', resize);
       renderer.dispose();
     },

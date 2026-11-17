@@ -7,33 +7,64 @@ export const TW = 64;
 export const TH = 32;
 export const Z = 32;
 
-export type View = { scale: number; ox: number; oy: number };
+/** Vistas de Tu Room: la misma habitación y la misma lógica, con otra base de proyección. */
+export type RoomView = 'iso' | 'top';
+export type View = { scale: number; ox: number; oy: number; kind?: RoomView };
 export type Pt = { x: number; y: number };
 
-export const project = (x: number, y: number, z: number): Pt => ({ x: ((x - y) * TW) / 2, y: ((x + y) * TH) / 2 - z * Z });
+// Cada vista es una base lineal: lo que mide un paso en x, en y y en z (altura) sobre la pantalla.
+// iso: proyección 2:1 clásica. top: cenital oblicua (arriba de la pantalla = fondo; la altura se asoma un poco hacia arriba-izquierda).
+type Basis = { ax: Pt; ay: Pt; az: Pt };
+const BASES: Record<RoomView, Basis> = {
+  iso: { ax: { x: TW / 2, y: TH / 2 }, ay: { x: -TW / 2, y: TH / 2 }, az: { x: 0, y: -Z } },
+  top: { ax: { x: 40, y: 0 }, ay: { x: 0, y: 40 }, az: { x: -10, y: -22 } },
+};
+const basisOf = (kind: RoomView | undefined): Basis => BASES[kind ?? 'iso'];
+
+export const project = (x: number, y: number, z: number, kind?: RoomView): Pt => {
+  const b = basisOf(kind);
+  return { x: x * b.ax.x + y * b.ay.x + z * b.az.x, y: x * b.ax.y + y * b.ay.y + z * b.az.y };
+};
 
 export const toScreen = (v: View, x: number, y: number, z: number): Pt => {
-  const p = project(x, y, z);
+  const p = project(x, y, z, v.kind);
   return { x: v.ox + p.x * v.scale, y: v.oy + p.y * v.scale };
 };
 
 /** pantalla → coordenadas de suelo (z = 0), fraccionarias */
 export function unprojectFloor(v: View, px: number, py: number): Pt {
+  const { ax, ay } = basisOf(v.kind);
   const sx = (px - v.ox) / v.scale;
   const sy = (py - v.oy) / v.scale;
-  return { x: (sx / (TW / 2) + sy / (TH / 2)) / 2, y: (sy / (TH / 2) - sx / (TW / 2)) / 2 };
+  const det = ax.x * ay.y - ay.x * ax.y;
+  return { x: (sx * ay.y - ay.x * sy) / det, y: (ax.x * sy - ax.y * sx) / det };
 }
 
 const PAD = 28;
-export function fitView(w: number, h: number, zoom = 1, panX = 0, panY = 0): View {
-  const xmin = (-ROOM_SIZE * TW) / 2;
-  const xmax = (ROOM_SIZE * TW) / 2;
-  const ymin = -WALL_H * Z;
-  const ymax = ROOM_SIZE * TH;
+export function fitView(w: number, h: number, zoom = 1, panX = 0, panY = 0, kind: RoomView = 'iso'): View {
+  // encuadra la caja de la habitación (suelo + paredes) en esta proyección
+  let xmin = Infinity;
+  let xmax = -Infinity;
+  let ymin = Infinity;
+  let ymax = -Infinity;
+  for (const x of [0, ROOM_SIZE]) {
+    for (const y of [0, ROOM_SIZE]) {
+      for (const z of [0, WALL_H]) {
+        const p = project(x, y, z, kind);
+        xmin = Math.min(xmin, p.x);
+        xmax = Math.max(xmax, p.x);
+        ymin = Math.min(ymin, p.y);
+        ymax = Math.max(ymax, p.y);
+      }
+    }
+  }
   const base = Math.min(w / (xmax - xmin + PAD), h / (ymax - ymin + PAD));
   const scale = base * zoom;
-  return { scale, ox: w / 2 + panX, oy: h / 2 - ((ymin + ymax) / 2) * scale + panY };
+  return { scale, ox: w / 2 - ((xmin + xmax) / 2) * scale + panX, oy: h / 2 - ((ymin + ymax) / 2) * scale + panY, kind };
 }
+
+/** orden de dibujo: mayor = más cerca de la cámara */
+const depthAt = (kind: RoomView | undefined, x: number, y: number) => (kind === 'top' ? y * 2 + x * 0.2 : x + y);
 
 // ───────────────── color ─────────────────
 
@@ -129,9 +160,9 @@ export function silhouette(v: View, it: PlacedItem): Pt[] {
   return c.map(([a, b, z]) => toScreen(v, a, b, z));
 }
 
-const depthKey = (it: PlacedItem) => {
+const depthKey = (it: PlacedItem, kind?: RoomView) => {
   const { w, d } = dims(it);
-  return it.x + w + (it.y + d);
+  return depthAt(kind, it.x + w, it.y + d);
 };
 
 /** Objeto más cercano a la cámara bajo el puntero. Las alfombras solo cuentan si no hay nada encima. */
@@ -139,7 +170,7 @@ export function pickItem(layout: RoomLayout, v: View, px: number, py: number): P
   const p = { x: px, y: py };
   const sorted = [...layout.items].sort((a, b) => {
     const rug = (i: PlacedItem) => (ITEMS[i.kind].mount === 'floor' && !ITEMS[i.kind].blocks ? 0 : 1);
-    return rug(b) - rug(a) || depthKey(b) - depthKey(a);
+    return rug(b) - rug(a) || depthKey(b, v.kind) - depthKey(a, v.kind);
   });
   for (const it of sorted) if (inPoly(p, silhouette(v, it))) return it;
   return null;
@@ -274,22 +305,24 @@ export function drawRoom(g: G, w: number, h: number, v: View, layout: RoomLayout
   for (const it of layout.items) {
     const def = ITEMS[it.kind];
     if (def.mount !== 'floor' || !def.blocks || it.id === o.hideId) continue;
-    list.push({ key: depthKey(it) - 0.01, draw: () => drawParts(it) });
+    list.push({ key: depthKey(it, v.kind) - 0.01, draw: () => drawParts(it) });
   }
   if (o.ghost) {
     const it = o.ghost.item;
-    if (ITEMS[it.kind].mount === 'floor') list.push({ key: depthKey(it) + 100, draw: () => drawParts(it, o.ghost?.valid ? 0.78 : 0.5) });
+    if (ITEMS[it.kind].mount === 'floor') list.push({ key: depthKey(it, v.kind) + 100, draw: () => drawParts(it, o.ghost?.valid ? 0.78 : 0.5) });
   }
   if (o.avatar) {
     const a = o.avatar;
     list.push({
-      key: a.x + a.y + 1.2,
+      key: depthAt(v.kind, a.x, a.y) + 1.2,
       draw: () => {
         const bob = a.moving ? Math.abs(Math.sin(a.t * 10)) * 0.07 : 0;
         const s = toScreen(v, a.x + 0.5, a.y + 0.5, 0);
         g.fillStyle = 'rgba(0,0,0,0.28)';
         g.beginPath();
-        g.ellipse(s.x, s.y, 14 * v.scale, 7 * v.scale, 0, 0, Math.PI * 2);
+        const shadowW = v.kind === 'top' ? 15 : 14;
+        const shadowH = v.kind === 'top' ? 9 : 7;
+        g.ellipse(s.x, s.y, shadowW * v.scale, shadowH * v.scale, 0, 0, Math.PI * 2);
         g.fill();
         const cx = a.x + 0.5 - 0.17;
         const cy = a.y + 0.5 - 0.17;

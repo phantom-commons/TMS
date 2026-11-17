@@ -19,6 +19,8 @@ export type Identity = {
   username: string;
   privateKey: Uint8Array;
   publicKey: Uint8Array;
+  /** false = invitado: la clave solo existe en este navegador y nadie ha guardado las 24 palabras */
+  saved?: boolean;
 };
 
 export type StoredIdentity = {
@@ -29,6 +31,7 @@ export type StoredIdentity = {
   encryptedSeed: Uint8Array;
   salt?: Uint8Array;        // identidad protegida con contraseña
   deviceKey?: CryptoKey;    // sesión recordada en este dispositivo
+  saved?: boolean;          // false = invitado; ausente = identidad anterior a las cuentas de invitado (cuenta guardada)
 };
 
 const ARGON2 = {
@@ -108,7 +111,7 @@ export async function decryptSeed(
     ),
   );
   const publicKey = ed.getPublicKey(privateKey);
-  return { username: stored.username, privateKey, publicKey };
+  return { username: stored.username, privateKey, publicKey, saved: stored.saved ?? true };
 }
 
 export function toMnemonic(privateKey: Uint8Array): string {
@@ -167,5 +170,5 @@ export async function openWithDeviceKey(stored: StoredIdentity): Promise<Identit
       toArrayBuffer(stored.encryptedSeed),
     ),
   );
-  return { username: stored.username, privateKey, publicKey: ed.getPublicKey(privateKey) };
+  return { username: stored.username, privateKey, publicKey: ed.getPublicKey(privateKey), saved: stored.saved ?? true };
 }

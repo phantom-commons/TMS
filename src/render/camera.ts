@@ -17,6 +17,11 @@ export const usesFacing = (m: CamMode) => m === 'fps' || m === 'third';
 
 const wrapPi = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
+const QUARTER = Math.PI / 2;
+
+/** Cuarto de vuelta (0 norte, 1 este, 2 sur, 3 oeste) más cercano a un ángulo acumulado. */
+export const quarterOf = (angle: number): number => (((Math.round(angle / QUARTER) % 4) + 4) % 4);
+
 export type CameraRig = {
   camera: () => THREE.Camera;
   readonly mode: CamMode;
@@ -27,6 +32,12 @@ export type CameraRig = {
   /** 0 norte, 1 este, 2 sur, 3 oeste (solo cámaras que giran) */
   readonly facing: number;
   turn: (dir: 1 | -1) => void;
+  /**
+   * Mirar arrastrando (táctil o ratón): gira la vista de forma continua, sin retraso. Positivo = hacia la derecha.
+   * El movimiento sigue siendo por casillas, así que al soltar (lookEnd) la vista se ajusta al cuarto de vuelta más cercano.
+   */
+  look: (radians: number) => void;
+  lookEnd: () => void;
   zoomBy: (factor: number) => void;
   /** pos: posición suavizada del avatar propio en el mundo, o null */
   update: (dt: number, pos: THREE.Vector3 | null) => void;
@@ -86,6 +97,17 @@ export function createCameraRig(worldW: number, worldH: number, initial: CamMode
     turn(dir) {
       facing = (facing + dir + 4) % 4;
       targetAngle += (dir * Math.PI) / 2;
+    },
+    look(radians) {
+      if (!usesFacing(mode)) return;
+      targetAngle += radians;
+      angle += radians; // directo: sin el retardo de la suavización mientras el dedo está abajo
+    },
+    lookEnd() {
+      if (!usesFacing(mode)) return;
+      const q = Math.round(targetAngle / QUARTER);
+      targetAngle = q * QUARTER;
+      facing = quarterOf(targetAngle);
     },
     zoomBy(factor) {
       zoom = Math.min(2.5, Math.max(0.6, zoom * factor));

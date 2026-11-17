@@ -2,6 +2,8 @@ import type { CamMode } from '../render/camera';
 
 export type InspectorMode = 'always' | 'hover' | 'off';
 export type StageStyle = 'atrium' | 'classic';
+/** 'simple': degradado, sin descargas. 'hdri': panorama real (5 MB), solo se ve en 1ª/3ª persona. */
+export type SkyStyle = 'simple' | 'hdri';
 
 export type Settings = {
   radial: boolean; // menú radial
@@ -17,6 +19,7 @@ export type Settings = {
   shadows: boolean;
   fog: boolean; // niebla en cámaras de primera/tercera persona
   stage: StageStyle; // escenografía 3D de la sala
+  sky: SkyStyle; // fondo del cielo
   fx: boolean; // partículas (polvo) del escenario
   inspector: InspectorMode; // log de objeto: siempre / al pasar o hacer click / apagado
   online: boolean; // conectar al relay (visitas y copia en la nube)
@@ -37,6 +40,7 @@ export const DEFAULTS: Settings = {
   shadows: true,
   fog: true,
   stage: 'atrium',
+  sky: 'simple',
   fx: true,
   inspector: 'hover',
   online: true,

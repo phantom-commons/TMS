@@ -20,6 +20,7 @@ export function renderHome(api: ShellApi): HTMLElement {
       <div class="avatar" aria-hidden="true"></div>
       <div><small>Hola</small><h1></h1><code></code></div>
     </header>
+    <button class="unsaved" type="button" data-go="#/profile" hidden>⚠ Invitado sin guardar · <b>Guardar cuenta</b></button>
     <button class="hero" type="button" data-go="#/room/my-room">
       <canvas class="hero-canvas" width="320" height="200"></canvas>
       <div class="hero-text"><b>Tu Room</b><span>Entra a tu espacio privado</span></div>
@@ -35,6 +36,7 @@ export function renderHome(api: ShellApi): HTMLElement {
       <button type="button" data-go="#/explore">🧭 Explorar rooms</button>
     </div>`;
   el.querySelector('h1')!.textContent = api.identity.username;
+  el.querySelector<HTMLElement>('.unsaved')!.hidden = api.identity.saved !== false;
   el.querySelector('code')!.textContent = shortPubkey(api.identity.publicKey);
   el.querySelector('.avatar')!.textContent = api.identity.username.slice(0, 1).toUpperCase();
   el.querySelectorAll<HTMLElement>('[data-go]').forEach((b) => (b.onclick = () => api.go(b.dataset.go ?? '#/home')));
