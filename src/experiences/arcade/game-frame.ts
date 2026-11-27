@@ -1,4 +1,5 @@
 import type { ExperienceContext } from '../../core/experience-registry';
+import { GRAPHICS_EVENT, getGraphics } from '../../core/graphics';
 
 // Marco común de los juegos arcade: barra superior, marcador, lienzo escalado, avisos y zona de controles.
 // Aquí vive el «cámara fija»: si la política de la room la bloquea, el marco anula zoom, pellizco y scroll.
@@ -8,7 +9,7 @@ export type Overlay = {
   body?: string;
   button: string;
   secondary?: { label: string; run: () => void };
-  /** acción adicional (p. ej. ⚙ Reglas), encima del botón secundario */
+  /** acción adicional (p. ej. Reglas), encima del botón secundario */
   extra?: { label: string; run: () => void };
 };
 
@@ -44,7 +45,7 @@ export function createGameFrame(ctx: ExperienceContext, opts: { title: string; l
     <header class="gf-top">
       <button class="gf-icon gf-back" type="button" aria-label="Volver al menú">←</button>
       <div class="gf-title"></div>
-      <span class="gf-lock" title="Cámara fija: esta room no permite mover ni hacer zoom" ${cameraLocked ? '' : 'hidden'}>📷 fija</span>
+      <span class="gf-lock" title="Cámara fija: esta room no permite mover ni hacer zoom" ${cameraLocked ? '' : 'hidden'}>fija</span>
       <button class="gf-icon gf-pause" type="button" aria-label="Pausa">⏸</button>
     </header>
     <div class="gf-stats"><span>Puntos <b class="gf-score">0</b></span><span>Récord <b class="gf-best">0</b></span></div>
@@ -70,7 +71,7 @@ export function createGameFrame(ctx: ExperienceContext, opts: { title: string; l
     const k = Math.min(aw / opts.logicalW, ah / opts.logicalH);
     const cssW = Math.floor(opts.logicalW * k);
     const cssH = Math.floor(opts.logicalH * k);
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const dpr = getGraphics().pixelRatio;
     stage.style.width = `${cssW}px`;
     stage.style.height = `${cssH}px`;
     canvas.width = Math.round(cssW * dpr);
@@ -79,6 +80,7 @@ export function createGameFrame(ctx: ExperienceContext, opts: { title: string; l
   };
   const ro = new ResizeObserver(fit);
   ro.observe(area);
+  window.addEventListener(GRAPHICS_EVENT, fit);
   fit();
 
   // ── cámara fija: ni zoom, ni pellizco, ni scroll, ni menú contextual ──
@@ -195,6 +197,7 @@ export function createGameFrame(ctx: ExperienceContext, opts: { title: string; l
     destroy() {
       stops.forEach((s) => s());
       ro.disconnect();
+      window.removeEventListener(GRAPHICS_EVENT, fit);
       document.removeEventListener('visibilitychange', onVis);
       window.removeEventListener('blur', autoPause);
       root.classList.remove('gf-root', 'cam-locked');

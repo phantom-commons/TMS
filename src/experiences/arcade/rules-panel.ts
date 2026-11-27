@@ -122,7 +122,7 @@ export function openRulesPanel(host: HTMLElement, opts: RulesPanelOptions): { cl
     closeBtn.type = 'button';
     closeBtn.className = 'rules-btn rules-close';
     closeBtn.setAttribute('aria-label', 'Cerrar reglas');
-    closeBtn.textContent = '✕';
+    closeBtn.textContent = '×';
     closeBtn.onclick = () => close();
     head.append(h, reset, closeBtn);
     const note = document.createElement('p');
