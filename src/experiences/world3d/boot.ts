@@ -20,6 +20,8 @@ import { createDevHud } from '../../ui/devhud';
 import { createDoorDialog } from '../../ui/door';
 import { createLabsPanel } from '../../ui/labs';
 import { showToast } from '../../ui/toast';
+import { openContactPrompt } from '../../ui/contact-prompt';
+import { createKV } from '../../core/kv';
 import { showHistoryPanel } from '../../ui/history';
 import { shortPubkey, type Identity } from '../../identity/keys';
 import { clearRoom, loadPending, loadRoom, savePending, saveRoomItems } from '../../identity/room-storage';
@@ -33,6 +35,7 @@ import { presenceState } from '../../sim/presence';
 import { generatePillars, homeRoomId, homeSeed, isHomeRoomId, roomSeed, starterCubes } from '../../sim/worldgen';
 import { layoutFor, layoutSpawn, layoutWalls } from '../../sim/layouts';
 import { createRelayClient, defaultRelayUrl, type RelayClient, type RelayStatus } from '../../net/relay-client';
+import { SYNC_TIMEOUT_MS, holdsAction, nextSyncAction } from '../../net/sync-gate';
 
 const short = (id: string) => `${id.slice(0, 6)}…${id.slice(-3)}`;
 
@@ -119,7 +122,39 @@ export async function bootWorld3D(identity: Identity) {
   let ready = false;
   let online: ReadonlySet<string> = new Set();
 
+  // Puesta al día (docs/RELAY-SYNC.md): mientras el relay nos pone al día no se firman MOVE/INTERACT. Antes se
+  // firmaban sobre una cabeza de cadena vieja; al llegar el SYNC chocaban con lo ya confirmado, el relay las
+  // rechazaba y el cliente descartaba TODAS las pendientes: de ahí el salto («teletransporte»).
+  let syncFailed = false; // la puesta al día no terminó: se libera el movimiento en modo local
+  let rebuilt = false; // en esta conexión ya se descartó la caché una vez
+  let resyncs = 0;
+  let syncTimer: ReturnType<typeof setTimeout> | undefined;
+  let lastHold = 0;
+  /** ¿se puede crear historia propia ya? Sí si no hay relay en juego, si ya estamos al día, o si la puesta al día falló. */
+  const canWriteNow = () => ready || syncFailed || !store.get().online;
+  let everReady = false;
+  const armSyncWatchdog = () => {
+    if (syncTimer || ready || syncFailed) return;
+    syncTimer = setTimeout(() => {
+      syncTimer = undefined;
+      if (ready) return;
+      syncFailed = true;
+      showToast('no se pudo sincronizar con el relay: modo local', 5000);
+      ensurePresence();
+    }, SYNC_TIMEOUT_MS);
+  };
+  const clearSyncWatchdog = () => {
+    if (syncTimer) clearTimeout(syncTimer);
+    syncTimer = undefined;
+  };
+
   const send = (type: LogEntryType, payload: unknown) => {
+    if (holdsAction(type, { online: store.get().online, connected: relay !== null && status !== 'closed', ready, failed: syncFailed })) {
+      const now = performance.now();
+      if (now - lastHold > 3000) showToast('sincronizando con el relay… un momento', 1500);
+      lastHold = now;
+      return;
+    }
     const entry = signEntry(
       { ...room.nextFor(author), type, roomId, payload, author, hlc: clock.tick() },
       identity.privateKey,
@@ -146,7 +181,9 @@ export async function bootWorld3D(identity: Identity) {
     if (room.hasInit()) return;
     const spawn = { x: 3, y: 3 };
     const layout = layoutFor(roomId);
-    if (ownHome) {
+    // Tu casa también espera al relay: con la caché vacía o vieja, crear INIT/ENTER antes de saber qué hay ya en el
+    // relay produce entradas con un seq ya usado («rechazado: seq ya usado»).
+    if (ownHome && canWriteNow()) {
       const seed = homeSeed(author);
       send('INIT', { spawn, owner: author, seed, doorTo: 'lobby' });
       starterCubes(seed, spawn, generatePillars(seed, spawn)).forEach((c, i) =>
@@ -174,7 +211,7 @@ export async function bootWorld3D(identity: Identity) {
 
   const ensurePresence = () => {
     if (!room.hasInit()) return bootstrapRoom();
-    if (!world.players[author] && (ready || ownHome)) send('ENTER', { x: world.spawn.x, y: world.spawn.y });
+    if (!world.players[author] && (ready || (ownHome && canWriteNow()))) send('ENTER', { x: world.spawn.x, y: world.spawn.y });
   };
 
   const handle = (res: ApplyResult) => {
@@ -204,9 +241,26 @@ export async function bootWorld3D(identity: Identity) {
             ready = false;
             online = new Set();
           }
+          if (s === 'connecting') {
+            // reconexión tras una sesión buena: se vuelve a intentar con garantías. Si nunca llegó a funcionar, sigue en local.
+            rebuilt = false;
+            resyncs = 0;
+            if (everReady) syncFailed = false;
+            armSyncWatchdog();
+          }
+          if (s === 'closed') clearSyncWatchdog();
         },
         onSync: (items, head, reset) => {
+          // Descarta la caché local y conserva solo tus entradas aún sin confirmar.
+          const rebuild = (why: string) => {
+            const mine = [...room.pendingList()];
+            room = new RoomState(roomId);
+            for (const e of mine) room.addPending(e);
+            void clearRoom(roomId).then(() => persistPending(true));
+            showToast(why);
+          };
           if (reset) {
+            // el relay tiene menos historia que tu caché (p. ej. borraron relay.db): se resube tu historial propio
             const mine = room.allEntries().filter((e) => e.author === author);
             room = new RoomState(roomId);
             for (const e of mine) room.addPending(e);
@@ -215,12 +269,30 @@ export async function bootWorld3D(identity: Identity) {
           }
           const res = room.applyConfirmed(items);
           handle(res);
-          if (res.error) return;
-          if (res.gap || room.lastRseq < head) {
+          // Antes, ante un error aquí se hacía `return` y el cliente se quedaba para siempre sin `ready`.
+          const action = nextSyncAction({ error: !!res.error, gap: !!res.gap, behind: room.lastRseq < head, rebuilt, resyncs });
+          if (action === 'resync') {
+            resyncs++;
             relay?.resync();
             return;
           }
+          if (action === 'rebuild') {
+            rebuilt = true;
+            resyncs = 0;
+            rebuild('la caché local no encajaba con el relay: se descarga de nuevo');
+            relay?.resync();
+            return;
+          }
+          if (action === 'fail') {
+            syncFailed = true;
+            clearSyncWatchdog();
+            showToast('no se pudo sincronizar con el relay: modo local', 5000);
+            ensurePresence();
+            return;
+          }
+          clearSyncWatchdog();
           ready = true;
+          everReady = true;
           refresh();
           flushPending();
           ensurePresence();
@@ -372,7 +444,7 @@ export async function bootWorld3D(identity: Identity) {
     const plan = planLock(world, author);
     if (isError(plan)) return showToast(plan.error);
     send(plan.type, { entityId: plan.entityId });
-    showToast(plan.type === 'LOCK' ? 'bloqueado 🔒' : 'desbloqueado 🔓');
+    showToast(plan.type === 'LOCK' ? 'bloqueado' : 'desbloqueado');
   };
 
   const doAttack = () => {
@@ -452,9 +524,9 @@ export async function bootWorld3D(identity: Identity) {
     const authors = [...new Set(all.map((e) => e.author))];
     for (const a of authors) {
       const v = verifyChain(all.filter((e) => e.author === a), a);
-      if (!v.ok) return showToast(`✗ cadena de ${short(a)}: ${v.reason}`, 6000);
+      if (!v.ok) return showToast(`Error: cadena de ${short(a)}: ${v.reason}`, 6000);
     }
-    showToast(`✓ ${all.length} entradas, ${authors.length} cadenas verificadas`, 3500);
+    showToast(`${all.length} entradas, ${authors.length} cadenas verificadas`, 3500);
   };
 
   const exportLog = () => {
@@ -470,14 +542,14 @@ export async function bootWorld3D(identity: Identity) {
 
   // ───────────── radial + ajustes + hud ─────────────
   const radial = createRadial([
-    { id: 'pickdrop', icon: '🎒', label: 'Recoger / soltar', run: doPickDrop },
-    { id: 'attack', icon: '⚔️', label: 'Atacar', run: doAttack },
-    { id: 'labs', icon: '🧪', label: 'Labs 3D', run: () => labsPanel.open() },
-    { id: 'lock', icon: '🔒', label: 'Bloquear', run: doLock },
-    { id: 'camera', icon: '🎥', label: 'Cámara', run: cycleCamera },
-    { id: 'log', icon: '📜', label: 'Log de la sala', run: fullLog },
-    { id: 'dev', icon: '🛠', label: 'Dev (F2)', run: () => store.set({ dev: !store.get().dev }) },
-    { id: 'settings', icon: '⚙', label: 'Ajustes', run: () => settings.open() },
+    { id: 'pickdrop', icon: 'bag', label: 'Recoger / soltar', run: doPickDrop },
+    { id: 'attack', icon: 'close', label: 'Atacar', run: doAttack },
+    { id: 'labs', icon: 'tools', label: 'Labs 3D', run: () => labsPanel.open() },
+    { id: 'lock', icon: 'lock', label: 'Bloquear', run: doLock },
+    { id: 'camera', icon: 'camera', label: 'Cámara', run: cycleCamera },
+    { id: 'log', icon: 'save', label: 'Log de la sala', run: fullLog },
+    { id: 'dev', icon: 'edit', label: 'Dev (F2)', run: () => store.set({ dev: !store.get().dev }) },
+    { id: 'settings', icon: 'gear', label: 'Ajustes', run: () => settings.open() },
   ]);
 
   const settings = attachSettings({
@@ -494,7 +566,7 @@ export async function bootWorld3D(identity: Identity) {
   backBtn.className = 'hud-btn menu-back';
   backBtn.title = 'Volver al menú';
   backBtn.setAttribute('aria-label', 'Volver al menú');
-  backBtn.textContent = '☰';
+  backBtn.textContent = '←';
   backBtn.onclick = () => {
     void persistPending(true).then(() => window.location.assign(`${location.pathname}#/explore`));
   };
@@ -561,6 +633,10 @@ export async function bootWorld3D(identity: Identity) {
       if (id.startsWith('door:')) {
         const dest = id.slice('door:'.length);
         openDoor(dest);
+        return;
+      }
+      if (id.startsWith('player:') && id.slice(7) !== author) {
+        openContactPrompt({ kv: createKV(author.slice(0, 16)), self: author, pubkey: id.slice(7), toast: showToast });
         return;
       }
       selected = { entity: id };
