@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GRAPHICS_EVENT, getGraphics } from '../core/graphics';
 
 export type SceneCtx = {
   scene: THREE.Scene;
@@ -41,7 +42,7 @@ export function createScene(canvas: HTMLCanvasElement, worldW: number, worldH: n
   scene.background = gradientSky;
 
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setPixelRatio(getGraphics().pixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -62,10 +63,12 @@ export function createScene(canvas: HTMLCanvasElement, worldW: number, worldH: n
 
   const listeners: Array<() => void> = [];
   const resize = () => {
+    renderer.setPixelRatio(getGraphics().pixelRatio);
     renderer.setSize(window.innerWidth, window.innerHeight);
     listeners.forEach((cb) => cb());
   };
   window.addEventListener('resize', resize);
+  window.addEventListener(GRAPHICS_EVENT, resize);
 
   return {
     scene,
@@ -100,6 +103,7 @@ export function createScene(canvas: HTMLCanvasElement, worldW: number, worldH: n
     dispose() {
       gradientSky.dispose();
       window.removeEventListener('resize', resize);
+      window.removeEventListener(GRAPHICS_EVENT, resize);
       renderer.dispose();
     },
   };
