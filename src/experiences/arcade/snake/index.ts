@@ -12,7 +12,7 @@ const SIZE = COLS * CELL;
 const DIRS: Partial<Record<GameAction, Dir>> = { up: 'up', down: 'down', left: 'left', right: 'right' };
 
 export const mountSnake: ExperienceFactory = (ctx) => {
-  const frame = createGameFrame(ctx, { title: '🐍 Snake', logicalW: SIZE, logicalH: SIZE });
+  const frame = createGameFrame(ctx, { title: 'Snake', logicalW: SIZE, logicalH: SIZE });
   const input = createAdaptiveInput('dpad', frame.canvas, frame.controls);
   const { g } = frame;
 
