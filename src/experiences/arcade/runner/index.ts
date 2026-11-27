@@ -18,7 +18,7 @@ export const mountRunner: ExperienceFactory = (ctx) => {
   const W = probe.cfg.worldW;
   const H = probe.cfg.worldH;
 
-  const frame = createGameFrame(ctx, { title: '🦖 Salto', logicalW: W, logicalH: H });
+  const frame = createGameFrame(ctx, { title: 'Salto', logicalW: W, logicalH: H });
   const input = createAdaptiveInput('jump', frame.canvas, frame.controls);
   const { g } = frame;
 
@@ -94,7 +94,7 @@ export const mountRunner: ExperienceFactory = (ctx) => {
         title: 'Salto',
         body: `Salta los cactus y agáchate bajo los pájaros${customNote()}.`,
         button: 'Empezar',
-        extra: { label: '⚙ Reglas', run: openRules },
+        extra: { label: 'Reglas', run: openRules },
         secondary: { label: 'Salir', run: () => ctx.exit() },
       },
       start,
@@ -110,7 +110,7 @@ export const mountRunner: ExperienceFactory = (ctx) => {
         title: isRecord ? '¡Nuevo récord!' : 'Has chocado',
         body: `${scoreOf(game)} metros · récord ${best}${customNote()}`,
         button: 'Intentar otra vez',
-        extra: { label: '⚙ Reglas', run: openRules },
+        extra: { label: 'Reglas', run: openRules },
         secondary: { label: 'Salir', run: () => ctx.exit() },
       },
       start,
