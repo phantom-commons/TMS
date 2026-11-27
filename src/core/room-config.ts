@@ -5,7 +5,7 @@ import type { RoomPolicy } from './permissions';
 //   View       → cómo se dibuja; la room declara qué vistas permite y el jugador elige entre ellas (view.allowed)
 //   Experience → qué puede hacer el usuario dentro       (experience → experience-registry.ts)
 
-export type RoomType = 'home' | 'social' | 'explorer' | 'arcade' | 'world';
+export type RoomType = 'home' | 'social' | 'explorer' | 'arcade' | 'world' | 'creator';
 /** Cómo se ve una room. Una room permite varias; el jugador elige una (si la room y su rol lo dejan). */
 export type ViewKind = 'ui' | 'side' | 'top' | 'iso' | 'third' | 'fps';
 export const VIEW_LABEL: Record<ViewKind, string> = {
@@ -39,6 +39,7 @@ export type RoomConfig = {
   id: string;
   name: string;
   tagline: string;
+  /** nombre de icono de línea (src/ui/icons.ts) */
   icon: string;
   type: RoomType;
   /** id en experience-registry */
@@ -78,7 +79,7 @@ export const ROOMS: readonly RoomConfig[] = [
     id: 'home',
     name: 'Inicio',
     tagline: 'Tu punto de partida en TMS.',
-    icon: '🏠',
+    icon: 'home',
     type: 'home',
     experience: 'home',
     launch: 'inline',
@@ -90,9 +91,9 @@ export const ROOMS: readonly RoomConfig[] = [
   },
   {
     id: 'my-room',
-    name: 'Tu Room',
-    tagline: 'Tu espacio privado. Mueve y bloquea tus muebles.',
-    icon: '🛋️',
+    name: 'Room clásica',
+    tagline: 'La primera room, en isométrica: mueve y bloquea tus muebles.',
+    icon: 'room',
     type: 'social',
     experience: 'personal-room',
     launch: 'inline',
@@ -103,10 +104,66 @@ export const ROOMS: readonly RoomConfig[] = [
     policy: { camera: 'free', edit: 'access' },
   },
   {
+    id: 'house',
+    name: 'Tu Room',
+    tagline: 'Tu espacio privado: primera persona, otras vistas y tus propios objetos.',
+    icon: 'door',
+    type: 'social',
+    experience: 'house',
+    launch: 'inline',
+    view: { allowed: ['fps', 'third', 'iso', 'top'], default: 'fps', controls: 'world' },
+    mode: 'solo',
+    resolution: 1,
+    features: { ...none, avatar: true, inventory: true, interactions: true },
+    policy: { camera: 'free', edit: 'access' },
+  },
+  {
+    id: 'star',
+    name: 'Tu estrella',
+    tagline: 'Explora tu planeta: tu nave se estrelló y hay que repararla.',
+    icon: 'world',
+    type: 'social',
+    experience: 'star',
+    launch: 'inline',
+    view: { allowed: ['third', 'top'], default: 'third', controls: 'world' },
+    mode: 'solo',
+    resolution: 1,
+    features: { ...none, avatar: true, inventory: true, interactions: true },
+    policy: { camera: 'free', edit: 'none' },
+  },
+  {
+    id: 'lab',
+    name: 'Lab',
+    tagline: 'Modela, prueba y previsualiza naves y mundos procedurales.',
+    icon: 'tools',
+    type: 'creator',
+    experience: 'lab',
+    launch: 'inline',
+    view: { allowed: ['iso'], default: 'iso', controls: 'pointer' },
+    mode: 'solo',
+    resolution: 1,
+    features: { ...none },
+    policy: { camera: 'free', edit: 'none' },
+  },
+  {
+    id: 'workshop',
+    name: 'Taller',
+    tagline: 'Crea tus propios objetos con voxeles y llévalos a tu casa.',
+    icon: 'tools',
+    type: 'creator',
+    experience: 'workshop',
+    launch: 'inline',
+    view: { allowed: ['iso'], default: 'iso', controls: 'pointer' },
+    mode: 'solo',
+    resolution: 1,
+    features: { ...none, inventory: true, interactions: true },
+    policy: { camera: 'locked', edit: 'none' },
+  },
+  {
     id: 'snake',
     name: 'Snake',
     tagline: 'Come, crece y no te choques. Cámara fija.',
-    icon: '🐍',
+    icon: 'snake',
     type: 'arcade',
     experience: 'snake',
     launch: 'inline',
@@ -120,7 +177,7 @@ export const ROOMS: readonly RoomConfig[] = [
     id: 'runner',
     name: 'Salto',
     tagline: 'Salta y agáchate. Aguanta lo máximo que puedas.',
-    icon: '🦖',
+    icon: 'run',
     type: 'arcade',
     experience: 'runner',
     launch: 'inline',
@@ -134,7 +191,7 @@ export const ROOMS: readonly RoomConfig[] = [
     id: 'world',
     name: 'Mundo 3D',
     tagline: 'Tu sala 3D con cámara libre, cubos y visitas.',
-    icon: '🧊',
+    icon: 'world',
     type: 'world',
     experience: 'world3d',
     launch: 'page',
@@ -149,7 +206,7 @@ export const ROOMS: readonly RoomConfig[] = [
     id: 'atrium',
     name: 'Atrium',
     tagline: 'Nave con columnas y altar central, en 3D.',
-    icon: '🏛️',
+    icon: 'atrium',
     type: 'world',
     experience: 'world3d',
     launch: 'page',
@@ -170,6 +227,7 @@ export const TYPE_LABEL: Record<RoomType, string> = {
   explorer: 'Exploración',
   arcade: 'Arcade',
   world: 'Mundo 3D',
+  creator: 'Creación',
 };
 
 /** Errores de una configuración (vacío = válida). */
@@ -201,7 +259,7 @@ export function roomBadges(c: RoomConfig): string[] {
   const { allowed } = c.view;
   if (allowed.length > 1 && c.policy.camera === 'free') out.push(`${allowed.length} vistas`);
   else out.push(VIEW_LABEL[c.view.default].toLowerCase());
-  if (c.policy.camera === 'locked') out.push('📷 cámara fija');
+  if (c.policy.camera === 'locked') out.push('cámara fija');
   if (c.policy.edit === 'access') out.push('editable');
   if (c.features.scores) out.push('récords');
   out.push(c.mode === 'shared' ? 'multijugador' : 'en solitario');

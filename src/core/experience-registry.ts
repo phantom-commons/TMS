@@ -46,6 +46,10 @@ export const soloCan =
 
 export function registerBuiltinExperiences(): void {
   registerExperience('personal-room', async () => (await import('../experiences/social/personal-room')).mountPersonalRoom);
+  registerExperience('house', async () => (await import('../experiences/house/index')).mountHouse);
+  registerExperience('star', async () => (await import('../experiences/star/index')).mountStar);
+  registerExperience('lab', async () => (await import('../experiences/lab/index')).mountLab);
+  registerExperience('workshop', async () => (await import('../experiences/workshop/index')).mountWorkshop);
   registerExperience('snake', async () => (await import('../experiences/arcade/snake/index')).mountSnake);
   registerExperience('runner', async () => (await import('../experiences/arcade/runner/index')).mountRunner);
 }

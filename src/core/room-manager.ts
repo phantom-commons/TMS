@@ -2,6 +2,7 @@ import type { Identity } from '../identity/keys';
 import { loadExperience, soloCan, type ExperienceHandle } from './experience-registry';
 import type { KV } from './kv';
 import { roomById, type RoomConfig } from './room-config';
+import { configOfDef, isCustomId, roomDefById } from './room-def';
 
 // Room Manager: abre una room por id, monta su experiencia en el contenedor y la desmonta al salir.
 // No sabe nada de juegos ni de habitaciones: solo de configuraciones.
@@ -40,7 +41,8 @@ export function createRoomManager(deps: RoomManagerDeps): RoomManager {
   };
 
   const open = async (roomId: string): Promise<boolean> => {
-    const config = roomById(roomId);
+    const def = isCustomId(roomId) ? roomDefById(deps.kv, roomId) : undefined;
+    const config = def ? configOfDef(def) : roomById(roomId);
     if (!config) {
       deps.toast('esa room no existe');
       return false;
