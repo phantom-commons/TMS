@@ -1,3 +1,4 @@
+import type { RenderScale, Quality, Toggle3 } from '../core/graphics';
 import type { CamMode } from '../render/camera';
 
 export type InspectorMode = 'always' | 'hover' | 'off';
@@ -24,6 +25,9 @@ export type Settings = {
   inspector: InspectorMode; // log de objeto: siempre / al pasar o hacer click / apagado
   online: boolean; // conectar al relay (visitas y copia en la nube)
   camera: CamMode;
+  quality: Quality; // gráficos: auto / baja / media / alta
+  renderScale: RenderScale; // 0 = según la calidad
+  outlines: Toggle3; // contornos en objetos
 };
 
 export const DEFAULTS: Settings = {
@@ -45,6 +49,9 @@ export const DEFAULTS: Settings = {
   inspector: 'hover',
   online: true,
   camera: 'oblique',
+  quality: 'auto',
+  renderScale: 0,
+  outlines: 'preset',
 };
 
 const KEY = 'tms.settings';

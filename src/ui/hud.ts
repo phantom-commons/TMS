@@ -112,7 +112,7 @@ export function createHud(deps: HudDeps): Hud {
   chat.dataset.open = 'false';
   const chatHead = el('button', 'hud-chat-head');
   chatHead.type = 'button';
-  const chatIcon = el('span', 'hud-chat-icon', '💬');
+  const chatIcon = el('span', 'hud-chat-icon', 'Chat');
   const chatPreview = el('span', 'hud-chat-preview', 'chat de sala');
   const chatBadge = el('em', 'hud-chat-badge');
   chatBadge.hidden = true;
@@ -124,7 +124,7 @@ export function createHud(deps: HudDeps): Hud {
   chatInput.placeholder = 'mensaje…';
   chatInput.maxLength = 240;
   chatInput.autocomplete = 'off';
-  const chatSend = el('button', 'hud-chat-send', '➤');
+  const chatSend = el('button', 'hud-chat-send', 'Enviar');
   chatSend.type = 'submit';
   chatForm.append(chatInput, chatSend);
   chatBody.append(chatLog, chatForm);
@@ -140,11 +140,11 @@ export function createHud(deps: HudDeps): Hud {
 
   // ───────── botones rápidos (junto al radial) ─────────
   const dock = el('div', 'hud-dock');
-  const pickBtn = el('button', 'hud-dock-btn', '🎒');
+  const pickBtn = el('button', 'hud-dock-btn', 'Coger');
   pickBtn.type = 'button';
   pickBtn.title = 'Recoger / soltar (F)';
   pickBtn.onclick = () => deps.onPickDrop();
-  const atkBtn = el('button', 'hud-dock-btn', '⚔️');
+  const atkBtn = el('button', 'hud-dock-btn', 'Atacar');
   atkBtn.type = 'button';
   atkBtn.title = 'Atacar (G)';
   atkBtn.onclick = () => deps.onAttack();
@@ -305,7 +305,7 @@ export function createHud(deps: HudDeps): Hud {
     setText(linkEl, 'link', f.linkLabel);
     setText(pendEl, 'pend', f.pending ? `↑${f.pending}` : '');
     pendEl.hidden = f.pending === 0;
-    setText(bagEl, 'bag', f.bag ? `🎒 ${f.bag}` : '');
+    setText(bagEl, 'bag', f.bag ? `mochila ${f.bag}` : '');
     bagEl.hidden = !f.bag;
     setText(camEl, 'cam', f.camLabel);
     pickBtn.dataset.active = f.bag ? 'true' : 'false';

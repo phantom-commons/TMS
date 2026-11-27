@@ -1,3 +1,4 @@
+import { icon as iconSvg } from './icons';
 export type RadialItem = { id: string; icon: string; label: string; run: () => void };
 
 export type Radial = {
@@ -37,7 +38,7 @@ export function createRadial(items: RadialItem[]): Radial {
     b.title = item.label;
     const icon = document.createElement('span');
     icon.className = 'radial-ico';
-    icon.textContent = item.icon;
+    icon.innerHTML = iconSvg(item.icon, 22) || item.icon;
     const label = document.createElement('small');
     label.textContent = item.label;
     const badge = document.createElement('em');

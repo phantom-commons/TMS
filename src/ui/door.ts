@@ -59,7 +59,7 @@ export function createDoorDialog(deps: { enter: (roomId: string) => void; onCanc
     const proc = document.createElement('button');
     proc.type = 'button';
     proc.className = 'secondary door-wide';
-    proc.textContent = '🌍 Mundo procedural';
+    proc.textContent = 'Mundo procedural';
     proc.addEventListener('click', () => {
       close();
       deps.enter(`room-${Math.random().toString(36).slice(2, 10)}`);
@@ -69,7 +69,7 @@ export function createDoorDialog(deps: { enter: (roomId: string) => void; onCanc
     const atrium = document.createElement('button');
     atrium.type = 'button';
     atrium.className = 'secondary door-wide';
-    atrium.textContent = '🏛 Atrium';
+    atrium.textContent = 'Atrium';
     atrium.addEventListener('click', () => {
       close();
       deps.enter('atrium');

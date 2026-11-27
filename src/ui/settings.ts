@@ -1,5 +1,6 @@
 import { toMnemonic, type Identity } from '../identity/keys';
 import { clearIdentity } from '../identity/storage';
+import { refreshGraphics, type Quality } from '../core/graphics';
 import { CAM_LABEL, CAM_MODES } from '../render/camera';
 import type { InspectorMode, Settings, SettingsStore, SkyStyle, StageStyle } from './settings-store';
 import { showToast } from './toast';
@@ -39,6 +40,12 @@ const GFX_TOGGLES: ToggleDef[] = [
 
 const NET_TOGGLES: ToggleDef[] = [{ key: 'online', label: 'Conectar al relay (visitas)' }];
 
+const QUALITIES: Array<[Quality, string]> = [
+  ['auto', 'Auto'],
+  ['low', 'Baja'],
+  ['medium', 'Media'],
+  ['high', 'Alta'],
+];
 const SKIES: Array<[SkyStyle, string]> = [
   ['simple', 'Simple (ligero)'],
   ['hdri', 'HDRI (5 MB)'],
@@ -150,6 +157,24 @@ export function attachSettings(deps: SettingsDeps): { open: () => void } {
     }
     card.append(skyRow);
 
+    // ---- calidad gráfica ----
+    section('Calidad gráfica');
+    const qRow = document.createElement('div');
+    qRow.className = 'seg';
+    const qButtons = new Map<string, HTMLButtonElement>();
+    for (const [mode, label] of QUALITIES) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = label;
+      b.onclick = () => {
+        deps.store.set({ quality: mode });
+        refreshGraphics();
+      };
+      qButtons.set(mode, b);
+      qRow.append(b);
+    }
+    card.append(qRow);
+
     // ---- interruptores ----
     const inputs = new Map<ToggleKey, HTMLInputElement>();
     const addToggles = (title: string, defs: ToggleDef[]) => {
@@ -182,6 +207,7 @@ export function attachSettings(deps: SettingsDeps): { open: () => void } {
       insButtons.forEach((b, mode) => b.classList.toggle('active', s.inspector === mode));
       stageButtons.forEach((b, mode) => b.classList.toggle('active', s.stage === mode));
       skyButtons.forEach((b, mode) => b.classList.toggle('active', s.sky === mode));
+      qButtons.forEach((b, mode) => b.classList.toggle('active', s.quality === mode));
       inputs.forEach((input, key) => (input.checked = s[key]));
     };
     sync(deps.store.get());
