@@ -1,7 +1,11 @@
 import { toMnemonic } from '../identity/keys';
+import { getGraphics, refreshGraphics, type Quality, type RenderScale, type Toggle3 } from '../core/graphics';
+import { createSettingsStore } from '../ui/settings-store';
 import { forgetHere, openAccountDialog } from './account-dialog';
 import { getBest } from '../experiences/arcade/scores';
 import { homeRoomId } from '../sim/worldgen';
+import { loadContacts } from '../core/contacts';
+import { openContactsDialog } from './contacts-dialog';
 import type { ShellApi } from './shell';
 
 export function renderProfile(api: ShellApi): HTMLElement {
@@ -24,12 +28,25 @@ export function renderProfile(api: ShellApi): HTMLElement {
       <div class="row"><button type="button" data-copy>Copiar clave pública</button><button type="button" data-visit>Copiar enlace de visita 3D</button></div>
     </div>
     <div class="panel">
+      <h2 class="sec">Contactos</h2>
+      <p class="lead ct-count"></p>
+      <div class="row"><button type="button" data-contacts>Abrir contactos</button></div>
+    </div>
+    <div class="panel">
       <h2 class="sec">Récords</h2>
       <div class="records">
-        <div><small>🐍 Snake</small><b>${getBest(api.kv, 'snake')}</b></div>
-        <div><small>🦖 Salto</small><b>${getBest(api.kv, 'runner')} m</b></div>
+        <div><small>Snake</small><b>${getBest(api.kv, 'snake')}</b></div>
+        <div><small>Salto</small><b>${getBest(api.kv, 'runner')} m</b></div>
       </div>
       <p class="lead">Los récords se guardan en este dispositivo. No son eventos firmados del log.</p>
+    </div>
+    <div class="panel gfx-panel">
+      <h2 class="sec">Gráficos</h2>
+      <p class="lead gfx-state"></p>
+      <label class="gfx-row"><span>Calidad</span><select data-gfx="quality"><option value="auto">Automática</option><option value="low">Baja</option><option value="medium">Media</option><option value="high">Alta</option></select></label>
+      <label class="gfx-row"><span>Escala de render</span><select data-gfx="renderScale"><option value="0">Según la calidad</option><option value="100">100 %</option><option value="85">85 %</option><option value="70">70 %</option></select></label>
+      <label class="gfx-row"><span>Contornos en objetos</span><select data-gfx="outlines"><option value="preset">Según la calidad</option><option value="on">Sí</option><option value="off">No</option></select></label>
+      <p class="lead">Es solo cosa de tu pantalla: no cambia lo que ven los demás ni la forma física de los objetos.</p>
     </div>
     <div class="panel">
       <h2 class="sec">Seguridad</h2>
@@ -46,8 +63,34 @@ export function renderProfile(api: ShellApi): HTMLElement {
   el.querySelector<HTMLElement>('[data-import]')!.onclick = () => openAccountDialog(api, 'import');
   el.querySelector('h1')!.textContent = api.identity.username;
   el.querySelector('.avatar')!.textContent = api.identity.username.slice(0, 1).toUpperCase();
+  const drawCount = () => (el.querySelector('.ct-count')!.textContent = `${loadContacts(api.kv).length} contactos. Se usan para dar y recibir objetos sin pegar claves.`);
+  drawCount();
+  el.querySelector<HTMLElement>('[data-contacts]')!.onclick = () => openContactsDialog(api, { onChange: drawCount });
   el.querySelector('.pk')!.textContent = api.author;
   el.querySelector('.home')!.textContent = home;
+
+  // ---- gráficos: el cliente decide ----
+  const settings = createSettingsStore();
+  const showGfx = () => {
+    const g = getGraphics();
+    const names = { low: 'baja', medium: 'media', high: 'alta' } as const;
+    el.querySelector('.gfx-state')!.textContent = `En uso: calidad ${names[g.tier]} · render al ${Math.round(g.scale)} % · contornos ${g.outlines ? 'sí' : 'no'}.`;
+  };
+  const s0 = settings.get();
+  el.querySelector<HTMLSelectElement>('[data-gfx="quality"]')!.value = s0.quality;
+  el.querySelector<HTMLSelectElement>('[data-gfx="renderScale"]')!.value = String(s0.renderScale);
+  el.querySelector<HTMLSelectElement>('[data-gfx="outlines"]')!.value = s0.outlines;
+  el.querySelectorAll<HTMLSelectElement>('[data-gfx]').forEach((sel) => {
+    sel.onchange = () => {
+      const key = sel.dataset.gfx;
+      if (key === 'quality') settings.set({ quality: sel.value as Quality });
+      else if (key === 'renderScale') settings.set({ renderScale: Number(sel.value) as RenderScale });
+      else settings.set({ outlines: sel.value as Toggle3 });
+      refreshGraphics();
+      showGfx();
+    };
+  });
+  showGfx();
 
   const copy = async (text: string, ok: string) => {
     try {

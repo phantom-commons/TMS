@@ -1,6 +1,10 @@
+import { icon } from '../ui/icons';
+import { startInventory } from '../experiences/house/units';
+import { renderCreate } from './view-create';
 import './shell.css';
 import { registerBuiltinExperiences } from '../core/experience-registry';
 import { createKV, type KV } from '../core/kv';
+import { loadLibrary } from '../core/object-registry';
 import { createRoomManager } from '../core/room-manager';
 import type { Identity } from '../identity/keys';
 import { bytesToHex } from '../sim/hash';
@@ -23,11 +27,11 @@ export type ShellApi = {
 
 type Tab = 'home' | 'explore' | 'inventory' | 'profile';
 const TABS: Array<{ id: Tab | 'room'; icon: string; label: string }> = [
-  { id: 'home', icon: '🏠', label: 'Inicio' },
-  { id: 'explore', icon: '🧭', label: 'Explorar' },
-  { id: 'room', icon: '🛋️', label: 'Tu Room' },
-  { id: 'inventory', icon: '🎒', label: 'Inventario' },
-  { id: 'profile', icon: '👤', label: 'Perfil' },
+  { id: 'home', icon: 'home', label: 'Inicio' },
+  { id: 'explore', icon: 'compass', label: 'Explorar' },
+  { id: 'room', icon: 'room', label: 'Tu Room' },
+  { id: 'inventory', icon: 'bag', label: 'Inventario' },
+  { id: 'profile', icon: 'user', label: 'Perfil' },
 ];
 
 const VIEWS: Record<Tab, (api: ShellApi) => HTMLElement> = {
@@ -43,6 +47,8 @@ export function startShell(identity: Identity): void {
 
   const author = bytesToHex(identity.publicKey);
   const kv = createKV(author.slice(0, 16));
+  startInventory(kv, identity.privateKey, author); // muebles de serie conocidos + inventario único de la cuenta
+  loadLibrary(kv); // tus objetos propios deben conocerse antes de dibujar Tu Room, el inventario o la vista previa de Inicio
   const app = document.createElement('div');
   app.className = 'shell';
   app.innerHTML = `
@@ -75,8 +81,8 @@ export function startShell(identity: Identity): void {
     b.type = 'button';
     b.className = `tab${t.id === 'room' ? ' tab-room' : ''}`;
     b.dataset.tab = t.id;
-    b.innerHTML = `<span class="tab-ico">${t.icon}</span><span class="tab-lbl">${t.label}</span>`;
-    b.onclick = () => go(t.id === 'room' ? '#/room/my-room' : `#/${t.id}`);
+    b.innerHTML = `<span class="tab-ico">${icon(t.icon)}</span><span class="tab-lbl">${t.label}</span>`;
+    b.onclick = () => go(t.id === 'room' ? '#/room/house' : `#/${t.id}`);
     nav.append(b);
   }
 
@@ -93,6 +99,13 @@ export function startShell(identity: Identity): void {
     }
     manager.close();
     app.classList.remove('in-room');
+    if (head === 'create') {
+      lastTab = 'explore';
+      setActive('explore');
+      main.replaceChildren(renderCreate(api, arg ? decodeURIComponent(arg) : undefined));
+      main.scrollTop = 0;
+      return;
+    }
     const tab: Tab = head === 'explore' || head === 'inventory' || head === 'profile' ? head : 'home';
     lastTab = tab;
     setActive(tab);
