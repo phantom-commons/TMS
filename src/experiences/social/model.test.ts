@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import * as ed from '@noble/ed25519';
 import { createKV, type StorageLike } from '../../core/kv';
+import { registerObject } from '../../core/object-registry';
+import { cellIndex, emptyObject, swordTemplate } from '../../core/objects';
 import { signDoc } from '../../core/signed-doc';
 import { bytesToHex } from '../../sim/hash';
 import { loadLayout, saveLayout } from './layout-store';
-import { ROOM_SIZE, applyOp, blockedCells, defaultLayout, findFreeSpot, findPath, orientedParts, validateLayout, ITEMS, ITEM_KINDS, type RoomLayout } from './model';
+import { ROOM_SIZE, applyOp, blockedCells, defaultLayout, findFreeSpot, findPath, grantItem, isItemKind, itemDef, orientedParts, ownedKinds, placedCount, stashCount, validateLayout, ITEMS, ITEM_KINDS, type RoomLayout } from './model';
 
 const OWNER = 'a'.repeat(64);
 const fresh = () => defaultLayout(OWNER, 'my-room', 1000);
@@ -72,7 +74,7 @@ describe('permisos en las operaciones', () => {
   it('el editor no mueve lo que el dueño bloqueó', () => {
     const l = must(applyOp(fresh(), { t: 'lock', id: 'it-3', locked: true }, 'owner'));
     const r = applyOp(l, { t: 'move', id: 'it-3', x: 4, y: 4 }, 'editor');
-    expect(r).toEqual({ ok: false, error: 'está bloqueado 🔒' });
+    expect(r).toEqual({ ok: false, error: 'está bloqueado' });
   });
   it('el editor no puede bloquear, colocar, guardar ni compartir', () => {
     const base = fresh();
@@ -211,5 +213,73 @@ describe('persistencia firmada', () => {
     bad.items[1].x = 5; bad.items[1].y = 0; bad.items[1].rot = 0; // escritorio sobre la cama
     kv.set('room.my-room', signDoc('TMS_ROOM_LAYOUT', bad, priv));
     expect(loadLayout(kv, owner).rejected).toBe(true);
+  });
+});
+
+// ───────────── objetos propios (voxel) ─────────────
+
+describe('objetos voxel en Tu Room', () => {
+  const owner = 'a'.repeat(64);
+  const crate = () => {
+    const o = emptyObject(8, 8, 8);
+    o.name = 'Caja';
+    for (let z = 0; z < 8; z++) for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) o.cells[cellIndex(o, x, y, z)] = 2;
+    return o;
+  };
+
+  it('un objeto registrado se resuelve como definición de suelo con sus piezas', () => {
+    const kind = registerObject(crate());
+    const def = itemDef(kind);
+    expect(def.label).toBe('Caja');
+    expect(def.mount).toBe('floor');
+    expect(def.blocks).toBe(true);
+    expect(def.parts).toHaveLength(1);
+    expect(isItemKind(kind)).toBe(true);
+    expect(isItemKind('obj:malo')).toBe(false);
+  });
+
+  it('el creador lo recibe en el inventario y se puede colocar', () => {
+    const kind = registerObject(crate());
+    let l = defaultLayout(owner);
+    l = grantItem(l, kind);
+    expect(stashCount(l, kind)).toBe(1);
+    const spot = findFreeSpot(l, kind)!;
+    const res = applyOp(l, { t: 'place', kind, ...spot }, 'owner');
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(placedCount(res.layout, kind)).toBe(1);
+      expect(stashCount(res.layout, kind)).toBe(0);
+      expect(ownedKinds(res.layout)).toContain(kind);
+    }
+  });
+
+  it('un objeto que bloquea impide pisar su casilla y se apila con otros muebles solo si no solapa', () => {
+    const kind = registerObject(crate());
+    let l = grantItem(defaultLayout(owner), kind, 2);
+    const first = applyOp(l, { t: 'place', kind, x: 6, y: 6 }, 'owner');
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    l = first.layout;
+    const again = applyOp(l, { t: 'place', kind, x: 6, y: 6 }, 'owner');
+    expect(again.ok).toBe(false);
+  });
+
+  it('un objeto propio desconocido no invalida el layout: se ve como bloque gris', () => {
+    const phantom = 'obj:' + 'f'.repeat(24);
+    const l = { ...defaultLayout(owner), stash: { [phantom]: 1 } } as ReturnType<typeof defaultLayout>;
+    expect(validateLayout(l)).toBeNull();
+    expect(itemDef(phantom as never).label).toBe('Objeto desconocido');
+  });
+
+  it('el inventario rechaza nombres de objeto inválidos', () => {
+    const l = { ...defaultLayout(owner), stash: { 'obj:zz': 1 } } as unknown as ReturnType<typeof defaultLayout>;
+    expect(validateLayout(l)).toBe('inventario inválido');
+  });
+
+  it('una espada gira y mantiene la huella', () => {
+    const kind = registerObject(swordTemplate());
+    const def = itemDef(kind);
+    expect(def.blocks).toBe(false);
+    expect(orientedParts(kind, 1)).toHaveLength(def.parts.length);
   });
 });

@@ -1,4 +1,5 @@
-import { ITEMS, ROOM_SIZE, WALL_H, cellsOf, dims, orientedParts, type PlacedItem, type RoomLayout, type Wall } from './model';
+import { getGraphics } from '../../core/graphics';
+import { ROOM_SIZE, WALL_H, cellsOf, dims, itemDef, orientedParts, type PlacedItem, type RoomLayout, type Wall } from './model';
 
 // Render isométrico 2D de Tu Room sobre un <canvas>. Solo dibuja y mide: no decide nada ni guarda estado.
 // Proyección 2:1 clásica. Eje x hacia abajo-derecha, eje y hacia abajo-izquierda, z hacia arriba.
@@ -117,10 +118,11 @@ function poly(g: G, v: View, pts: Array<[number, number, number]>, fill?: string
   }
 }
 
-function box(g: G, v: View, x: number, y: number, z: number, w: number, d: number, h: number, color: string) {
-  poly(g, v, [[x, y + d, z], [x + w, y + d, z], [x + w, y + d, z + h], [x, y + d, z + h]], shade(color, 0.82)); // cara izquierda (+y)
-  poly(g, v, [[x + w, y, z], [x + w, y + d, z], [x + w, y + d, z + h], [x + w, y, z + h]], shade(color, 0.62)); // cara derecha (+x)
-  poly(g, v, [[x, y, z + h], [x + w, y, z + h], [x + w, y + d, z + h], [x, y + d, z + h]], shade(color, 1.08)); // arriba
+export function box(g: G, v: View, x: number, y: number, z: number, w: number, d: number, h: number, color: string) {
+  const line = getGraphics().outlines ? 'rgba(10,12,18,0.42)' : undefined;
+  poly(g, v, [[x, y + d, z], [x + w, y + d, z], [x + w, y + d, z + h], [x, y + d, z + h]], shade(color, 0.82), line, 1); // cara izquierda (+y)
+  poly(g, v, [[x + w, y, z], [x + w, y + d, z], [x + w, y + d, z + h], [x + w, y, z + h]], shade(color, 0.62), line, 1); // cara derecha (+x)
+  poly(g, v, [[x, y, z + h], [x + w, y, z + h], [x + w, y + d, z + h], [x, y + d, z + h]], shade(color, 1.08), line, 1); // arriba
 }
 
 export const wallPt = (wall: Wall, u: number, z: number): [number, number, number] => (wall === 'left' ? [0, u, z] : [u, 0, z]);
@@ -145,7 +147,7 @@ const heightOf = (it: PlacedItem) => orientedParts(it.kind, it.rot).reduce((m, p
 
 /** Silueta en pantalla (para elegir objetos con el dedo). */
 export function silhouette(v: View, it: PlacedItem): Pt[] {
-  const def = ITEMS[it.kind];
+  const def = itemDef(it.kind);
   if (def.mount === 'wall') {
     const wall = it.wall ?? 'left';
     return wallQuad(wall, it.x, it.x + def.w, def.z0 ?? 0.8, def.z1 ?? 2).map(([x, y, z]) => toScreen(v, x, y, z));
@@ -169,7 +171,7 @@ const depthKey = (it: PlacedItem, kind?: RoomView) => {
 export function pickItem(layout: RoomLayout, v: View, px: number, py: number): PlacedItem | null {
   const p = { x: px, y: py };
   const sorted = [...layout.items].sort((a, b) => {
-    const rug = (i: PlacedItem) => (ITEMS[i.kind].mount === 'floor' && !ITEMS[i.kind].blocks ? 0 : 1);
+    const rug = (i: PlacedItem) => (itemDef(i.kind).mount === 'floor' && !itemDef(i.kind).blocks ? 0 : 1);
     return rug(b) - rug(a) || depthKey(b, v.kind) - depthKey(a, v.kind);
   });
   for (const it of sorted) if (inPoly(p, silhouette(v, it))) return it;
@@ -247,7 +249,7 @@ export function drawRoom(g: G, w: number, h: number, v: View, layout: RoomLayout
 
   // objetos de pared
   const drawWallItem = (it: PlacedItem, alpha = 1) => {
-    const def = ITEMS[it.kind];
+    const def = itemDef(it.kind);
     const wall = it.wall ?? 'left';
     const u0 = it.x;
     const u1 = it.x + def.w;
@@ -274,7 +276,7 @@ export function drawRoom(g: G, w: number, h: number, v: View, layout: RoomLayout
     }
     g.globalAlpha = 1;
   };
-  for (const it of layout.items) if (ITEMS[it.kind].mount === 'wall' && it.id !== o.hideId) drawWallItem(it);
+  for (const it of layout.items) if (itemDef(it.kind).mount === 'wall' && it.id !== o.hideId) drawWallItem(it);
 
   // alfombras (planas)
   const drawParts = (it: PlacedItem, alpha = 1) => {
@@ -282,7 +284,7 @@ export function drawRoom(g: G, w: number, h: number, v: View, layout: RoomLayout
     for (const p of orientedParts(it.kind, it.rot)) box(g, v, it.x + p.dx, it.y + p.dy, p.dz, p.w, p.d, p.h, p.color);
     g.globalAlpha = 1;
   };
-  for (const it of layout.items) if (ITEMS[it.kind].mount === 'floor' && !ITEMS[it.kind].blocks && it.id !== o.hideId) drawParts(it);
+  for (const it of layout.items) if (itemDef(it.kind).mount === 'floor' && !itemDef(it.kind).blocks && it.id !== o.hideId) drawParts(it);
 
   // marcas de suelo: camino, casilla bajo el puntero, selección
   for (const t of o.trail ?? []) poly(g, v, [[t.x + 0.3, t.y + 0.3, 0], [t.x + 0.7, t.y + 0.3, 0], [t.x + 0.7, t.y + 0.7, 0], [t.x + 0.3, t.y + 0.7, 0]], 'rgba(255,255,255,0.18)');
@@ -291,10 +293,10 @@ export function drawRoom(g: G, w: number, h: number, v: View, layout: RoomLayout
     poly(g, v, [[x, y, 0], [x + 1, y, 0], [x + 1, y + 1, 0], [x, y + 1, 0]], 'rgba(155,123,255,0.22)', 'rgba(217,204,255,0.6)', 1.5);
   }
   const sel = o.selectedId ? layout.items.find((i) => i.id === o.selectedId) : null;
-  if (sel && sel.id !== o.hideId && ITEMS[sel.kind].mount === 'floor') {
+  if (sel && sel.id !== o.hideId && itemDef(sel.kind).mount === 'floor') {
     for (const [x, y] of cellsOf(sel)) poly(g, v, [[x, y, 0], [x + 1, y, 0], [x + 1, y + 1, 0], [x, y + 1, 0]], 'rgba(155,123,255,0.28)', 'rgba(217,204,255,0.9)', 1.5);
   }
-  if (o.ghost && ITEMS[o.ghost.item.kind].mount === 'floor') {
+  if (o.ghost && itemDef(o.ghost.item.kind).mount === 'floor') {
     const col = o.ghost.valid ? 'rgba(80,220,140,0.35)' : 'rgba(255,90,110,0.38)';
     for (const [x, y] of cellsOf(o.ghost.item)) poly(g, v, [[x, y, 0], [x + 1, y, 0], [x + 1, y + 1, 0], [x, y + 1, 0]], col);
   }
@@ -303,13 +305,13 @@ export function drawRoom(g: G, w: number, h: number, v: View, layout: RoomLayout
   type Drawable = { key: number; draw: () => void };
   const list: Drawable[] = [];
   for (const it of layout.items) {
-    const def = ITEMS[it.kind];
+    const def = itemDef(it.kind);
     if (def.mount !== 'floor' || !def.blocks || it.id === o.hideId) continue;
     list.push({ key: depthKey(it, v.kind) - 0.01, draw: () => drawParts(it) });
   }
   if (o.ghost) {
     const it = o.ghost.item;
-    if (ITEMS[it.kind].mount === 'floor') list.push({ key: depthKey(it, v.kind) + 100, draw: () => drawParts(it, o.ghost?.valid ? 0.78 : 0.5) });
+    if (itemDef(it.kind).mount === 'floor') list.push({ key: depthKey(it, v.kind) + 100, draw: () => drawParts(it, o.ghost?.valid ? 0.78 : 0.5) });
   }
   if (o.avatar) {
     const a = o.avatar;
@@ -336,7 +338,7 @@ export function drawRoom(g: G, w: number, h: number, v: View, layout: RoomLayout
   }
   list.sort((p, q) => p.key - q.key).forEach((d) => d.draw());
 
-  if (o.ghost && ITEMS[o.ghost.item.kind].mount === 'wall') drawWallItem(o.ghost.item, o.ghost.valid ? 0.8 : 0.45);
+  if (o.ghost && itemDef(o.ghost.item.kind).mount === 'wall') drawWallItem(o.ghost.item, o.ghost.valid ? 0.8 : 0.45);
 
   // selección y candados
   if (sel && sel.id !== o.hideId) {
@@ -364,7 +366,79 @@ export function drawRoom(g: G, w: number, h: number, v: View, layout: RoomLayout
       g.arc(cx, top.y - 2, 11 * Math.max(0.8, v.scale), 0, Math.PI * 2);
       g.fill();
       g.fillStyle = '#fff';
-      g.fillText('🔒', cx, top.y - 1);
+      g.fillRect(cx - 3.5, top.y - 2.5, 7, 5);
+      g.strokeStyle = '#fff';
+      g.lineWidth = 1.4;
+      g.beginPath();
+      g.arc(cx, top.y - 2.5, 2.6, Math.PI, 0);
+      g.stroke();
     }
+  }
+}
+
+
+// ───────────────── vista previa de un objeto (Taller) ─────────────────
+
+/** Gira 90° las piezas dentro de su huella (w = casillas en x antes de girar). */
+const turnParts = (parts: BoxLike[], w: number): BoxLike[] => parts.map((p) => ({ ...p, dx: p.dy, dy: w - p.dx - p.w, w: p.d, d: p.w }));
+type BoxLike = { dx: number; dy: number; dz: number; w: number; d: number; h: number; color: string };
+
+export type PreviewOpts = {
+  /** silueta de una persona (1,7 casillas) junto al objeto, para ver la escala */
+  ref?: boolean;
+  /** sin baldosas debajo: para miniaturas */
+  plain?: boolean;
+};
+
+/** Dibuja un objeto (tamaño real en casillas) centrado y ajustado al lienzo, sobre las casillas que ocupa su huella. */
+export function drawObjectPreview(
+  g: G,
+  cw: number,
+  ch: number,
+  o: { w: number; d: number; h: number; parts: BoxLike[] },
+  turns = 0,
+  mark?: { x: number; y: number; z: number; size: number } | null,
+  opts: PreviewOpts = {},
+): void {
+  g.clearRect(0, 0, cw, ch);
+  const swap = turns % 2 === 1;
+  const fw = swap ? o.d : o.w;
+  const fd = swap ? o.w : o.d;
+  const parts = swap ? turnParts(o.parts, o.w) : o.parts;
+  const floorW = opts.plain ? fw : Math.max(1, Math.ceil(fw - 1e-9));
+  const floorD = opts.plain ? fd : Math.max(1, Math.ceil(fd - 1e-9));
+  const person = opts.ref ? { x: floorW + 0.25, y: 0.1, w: 0.35, d: 0.25, h: 1.7 } : null;
+  const maxX = Math.max(floorW, person ? person.x + person.w : 0);
+  const height = Math.max(o.h, person ? person.h : 0);
+  // encuadre: caja de la huella (más la referencia) + altura, en la proyección isométrica
+  const pts = [0, maxX].flatMap((x) => [0, Math.max(floorD, person ? person.y + person.d : 0)].flatMap((y) => [0, height].map((z) => project(x, y, z, 'iso'))));
+  const xs = pts.map((p) => p.x);
+  const ys = pts.map((p) => p.y);
+  const bw = Math.max(...xs) - Math.min(...xs) + 24;
+  const bh = Math.max(...ys) - Math.min(...ys) + 24;
+  const scale = Math.min(cw / bw, ch / bh);
+  const v: View = {
+    scale,
+    ox: cw / 2 - ((Math.max(...xs) + Math.min(...xs)) / 2) * scale,
+    oy: ch / 2 - ((Math.max(...ys) + Math.min(...ys)) / 2) * scale,
+    kind: 'iso',
+  };
+  if (!opts.plain) {
+    for (let x = 0; x < floorW; x++) {
+      for (let y = 0; y < floorD; y++) {
+        poly(g, v, [[x, y, 0], [x + 1, y, 0], [x + 1, y + 1, 0], [x, y + 1, 0]], (x + y) % 2 ? '#2e3342' : '#292e3c', 'rgba(255,255,255,0.16)', 1);
+      }
+    }
+  }
+  const order = [...parts].sort((a, b) => a.dx + a.dy + a.dz - (b.dx + b.dy + b.dz) || a.dz - b.dz);
+  for (const p of order) box(g, v, p.dx, p.dy, p.dz, p.w, p.d, p.h, p.color);
+  if (person) {
+    g.globalAlpha = 0.45;
+    box(g, v, person.x, person.y, 0, person.w, person.d, person.h, '#9aa3b8');
+    g.globalAlpha = 1;
+  }
+  if (mark) {
+    const { x, y, z, size } = mark;
+    poly(g, v, [[x, y, z + size], [x + size, y, z + size], [x + size, y + size, z + size], [x, y + size, z + size]], 'rgba(155,123,255,0.35)', '#d9ccff', 1.5);
   }
 }

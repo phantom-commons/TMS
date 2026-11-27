@@ -1,12 +1,13 @@
 import type { ExperienceFactory } from '../../core/experience-registry';
+import { GRAPHICS_EVENT, getGraphics } from '../../core/graphics';
 import { VIEW_LABEL, resolveView, type ViewKind } from '../../core/room-config';
 import { ROLE_LABEL, canRole, roleOf, type Capability, type Role } from '../../core/permissions';
 import { shortPubkey } from '../../identity/keys';
 import { hexToBytes } from '../../sim/hash';
 import { loadLayout, saveLayout } from './layout-store';
 import {
-  ITEMS,
-  ITEM_KINDS,
+  itemDef,
+  ownedKinds,
   ROOM_SIZE,
   applyOp,
   findFreeSpot,
@@ -61,18 +62,18 @@ export const mountPersonalRoom: ExperienceFactory = (ctx) => {
   root.innerHTML = `
     <header class="pr-top">
       <button class="gf-icon pr-back" type="button" aria-label="Volver al menú">←</button>
-      <div class="pr-title">🛋️ Tu Room <span class="pr-role"></span></div>
-      <span class="gf-lock pr-camlock" title="El dueño fijó la cámara" hidden>📷 fija</span>
+      <div class="pr-title">Tu Room <span class="pr-role"></span></div>
+      <span class="gf-lock pr-camlock" title="El dueño fijó la cámara" hidden>fija</span>
       <button class="gf-icon pr-gear" type="button" aria-label="Permisos" hidden>⚙</button>
     </header>
     <div class="pr-banner" hidden><span></span><button type="button">Volver a Dueño</button></div>
     <div class="pr-stage">
       <canvas class="pr-canvas"></canvas>
       <div class="pr-zoom"><button type="button" data-z="in" aria-label="Acercar">+</button><button type="button" data-z="out" aria-label="Alejar">−</button><button type="button" data-z="reset" aria-label="Centrar">◎</button><button type="button" class="pr-viewbtn" data-z="view" aria-label="Cambiar vista"></button></div>
-      <div class="pr-private" hidden><div class="gf-card"><h2>🔒 Room privada</h2><p>El dueño no permite visitas en este momento.</p></div></div>
+      <div class="pr-private" hidden><div class="gf-card"><h2>Room privada</h2><p>El dueño no permite visitas en este momento.</p></div></div>
     </div>
     <div class="pr-dock">
-      <div class="pr-modes" role="tablist"><button type="button" data-mode="walk">🚶 Caminar</button><button type="button" data-mode="edit">✏️ Editar</button></div>
+      <div class="pr-modes" role="tablist"><button type="button" data-mode="walk">Caminar</button><button type="button" data-mode="edit">Editar</button></div>
       <div class="pr-edit" hidden>
         <div class="pr-sel"></div>
         <div class="pr-tray"></div>
@@ -116,13 +117,14 @@ export const mountPersonalRoom: ExperienceFactory = (ctx) => {
     cssW = stage.clientWidth;
     cssH = stage.clientHeight;
     if (cssW < 10 || cssH < 10) return;
-    dpr = Math.min(2, window.devicePixelRatio || 1);
+    dpr = getGraphics().pixelRatio;
     canvas.width = Math.round(cssW * dpr);
     canvas.height = Math.round(cssH * dpr);
     dirty = true;
   };
   const ro = new ResizeObserver(resize);
   ro.observe(stage);
+  window.addEventListener(GRAPHICS_EVENT, resize);
   resize();
 
   // Vista: la room declara cuáles permite; tu elección se guarda por jugador y solo cuenta si puedes mover la cámara.
@@ -241,10 +243,10 @@ export const mountPersonalRoom: ExperienceFactory = (ctx) => {
       p.textContent = 'Toca un objeto para elegirlo · arrástralo o toca una casilla para moverlo';
       sel.append(p);
     } else {
-      const def = ITEMS[it.kind];
+      const def = itemDef(it.kind);
       const label = document.createElement('b');
       label.className = 'pr-sel-name';
-      label.textContent = `${def.icon} ${def.label}${it.locked ? ' 🔒' : ''}`;
+      label.textContent = `${def.label}${it.locked ? ' (bloqueado)' : ''}`;
       sel.append(label);
       const add = (act: string, text: string, enabled: boolean) => {
         const b = document.createElement('button');
@@ -255,8 +257,8 @@ export const mountPersonalRoom: ExperienceFactory = (ctx) => {
         sel.append(b);
       };
       add('rotate', '↻ Girar', can('move') && !it.locked && def.mount === 'floor');
-      if (can('lock')) add('lock', it.locked ? '🔓 Desbloquear' : '🔒 Bloquear', true);
-      if (can('manage')) add('store', '📥 Guardar', !it.locked);
+      if (can('lock')) add('lock', it.locked ? 'Desbloquear' : 'Bloquear', true);
+      if (can('manage')) add('store', 'Guardar', !it.locked);
       if (it.locked && !can('lock')) {
         const p = document.createElement('p');
         p.className = 'pr-hint';
@@ -268,7 +270,7 @@ export const mountPersonalRoom: ExperienceFactory = (ctx) => {
     // bandeja del inventario
     tray.innerHTML = '';
     if (can('manage')) {
-      const entries = ITEM_KINDS.filter((k) => (layout.stash[k] ?? 0) > 0);
+      const entries = ownedKinds(layout).filter((k) => (layout.stash[k] ?? 0) > 0);
       if (entries.length === 0) {
         const p = document.createElement('span');
         p.className = 'pr-hint';
@@ -279,8 +281,8 @@ export const mountPersonalRoom: ExperienceFactory = (ctx) => {
         const b = document.createElement('button');
         b.type = 'button';
         b.dataset.place = k;
-        b.title = `Colocar ${ITEMS[k].label}`;
-        b.textContent = `${ITEMS[k].icon} ×${layout.stash[k]}`;
+        b.title = `Colocar ${itemDef(k).label}`;
+        b.textContent = `${itemDef(k).icon} ×${layout.stash[k]}`;
         tray.append(b);
       }
     }
@@ -414,7 +416,7 @@ export const mountPersonalRoom: ExperienceFactory = (ctx) => {
 
   const ghostFor = (it: PlacedItem, p: Pt, d: Drag): Drag['ghost'] | null => {
     const v = view();
-    const def = ITEMS[it.kind];
+    const def = itemDef(it.kind);
     let moved: PlacedItem;
     let op: Op;
     if (def.mount === 'wall') {
@@ -478,7 +480,7 @@ export const mountPersonalRoom: ExperienceFactory = (ctx) => {
       if (down.hit && can('move') && !down.hit.locked) {
         const it = down.hit;
         selectedId = it.id;
-        const def = ITEMS[it.kind];
+        const def = itemDef(it.kind);
         let offX = down.grabTile.x - it.x;
         let offY = down.grabTile.y - it.y;
         if (def.mount === 'wall') {
@@ -491,7 +493,7 @@ export const mountPersonalRoom: ExperienceFactory = (ctx) => {
       } else if (!down.hit && can('camera')) {
         down.panning = true;
       } else if (down.hit?.locked) {
-        ctx.toast('está bloqueado 🔒');
+        ctx.toast('está bloqueado');
         down = null;
         return;
       }
@@ -542,8 +544,8 @@ export const mountPersonalRoom: ExperienceFactory = (ctx) => {
       }
       const it = selected();
       if (!it) return;
-      if (it.locked) return void ctx.toast('está bloqueado 🔒');
-      const def = ITEMS[it.kind];
+      if (it.locked) return void ctx.toast('está bloqueado');
+      const def = itemDef(it.kind);
       if (def.mount === 'wall') {
         const slot = pickWallSlot(view(), p.x, p.y);
         if (slot) commit({ t: 'move', id: it.id, x: Math.min(ROOM_SIZE - def.w, slot.u), y: 0, wall: slot.wall as Wall });
@@ -635,7 +637,7 @@ export const mountPersonalRoom: ExperienceFactory = (ctx) => {
       dirty = false;
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
       const it = drag ? layout.items.find((i) => i.id === drag?.id) : null;
-      const wallDrag = !!it && ITEMS[it.kind].mount === 'wall';
+      const wallDrag = !!it && itemDef(it.kind).mount === 'wall';
       drawRoom(g, cssW, cssH, view(), layout, {
         hue: ownerHue(layout.owner),
         selectedId: mode === 'edit' ? selectedId : null,
@@ -659,6 +661,7 @@ export const mountPersonalRoom: ExperienceFactory = (ctx) => {
       cancelAnimationFrame(raf);
       ro.disconnect();
       window.removeEventListener('keydown', onKey);
+      window.removeEventListener(GRAPHICS_EVENT, resize);
       root.classList.remove('pr-root');
       root.innerHTML = '';
     },

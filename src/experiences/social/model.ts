@@ -1,4 +1,6 @@
 import { canRole, type Capability, type Role, type Visitors } from '../../core/permissions';
+import { knownObject } from '../../core/object-registry';
+import { isObjectKind, type ObjectKind } from '../../core/objects';
 import { roomById } from '../../core/room-config';
 
 // Modelo puro de Tu Room (sin DOM ni canvas): objetos, reglas de colocación y operaciones con permisos.
@@ -8,7 +10,9 @@ export const ROOM_SIZE = 8;
 export const WALL_H = 3;
 export const MAX_EDITORS = 8;
 
-export type ItemKind = 'bed' | 'chair' | 'desk' | 'window' | 'rug' | 'lamp' | 'plant' | 'poster';
+export type BuiltinKind = 'bed' | 'chair' | 'desk' | 'window' | 'rug' | 'lamp' | 'plant' | 'poster';
+/** Muebles de serie o un objeto voxel propio (id por contenido: `obj:<hash>`). */
+export type ItemKind = BuiltinKind | ObjectKind;
 export type Wall = 'left' | 'right';
 
 /** Pieza de un mueble: una caja en coordenadas de la casilla del objeto (unidades = casillas). */
@@ -32,7 +36,7 @@ export type ItemDef = {
   color: string;
 };
 
-export const ITEMS: Record<ItemKind, ItemDef> = {
+export const ITEMS: Record<BuiltinKind, ItemDef> = {
   bed: {
     kind: 'bed', label: 'Cama', icon: '🛏️', mount: 'floor', w: 2, d: 1, blocks: true, color: '#6b7fd7',
     parts: [
@@ -92,7 +96,47 @@ export const ITEMS: Record<ItemKind, ItemDef> = {
   },
 };
 
-export const ITEM_KINDS = Object.keys(ITEMS) as ItemKind[];
+export const ITEM_KINDS = Object.keys(ITEMS) as BuiltinKind[];
+
+export const isBuiltinKind = (k: string): k is BuiltinKind => Object.prototype.hasOwnProperty.call(ITEMS, k);
+/** ¿es un nombre de objeto válido? (que esté registrado en este cliente es otra cuestión) */
+export const isItemKind = (k: string): k is ItemKind => isBuiltinKind(k) || isObjectKind(k);
+
+const customDefs = new Map<string, ItemDef>();
+const UNKNOWN: Part[] = [{ dx: 0.2, dy: 0.2, dz: 0, w: 0.6, d: 0.6, h: 0.6, color: '#59606f' }];
+
+/**
+ * Definición de un objeto: de serie o voxel propio. Un objeto propio que este cliente aún no conoce (por ejemplo, tras
+ * borrar la biblioteca local) se muestra como bloque gris: el layout sigue siendo válido y no se pierde nada.
+ */
+export function itemDef(kind: ItemKind): ItemDef {
+  if (isBuiltinKind(kind)) return ITEMS[kind];
+  const cached = customDefs.get(kind);
+  if (cached) return cached;
+  const known = knownObject(kind);
+  if (!known) return { kind, label: 'Objeto desconocido', icon: '❔', mount: 'floor', w: 1, d: 1, blocks: true, parts: UNKNOWN, color: '#59606f' };
+  const def: ItemDef = {
+    kind,
+    label: known.obj.name,
+    icon: '',
+    mount: 'floor',
+    w: known.compiled.w,
+    d: known.compiled.d,
+    blocks: known.compiled.blocks,
+    parts: known.compiled.parts,
+    color: known.compiled.color,
+  };
+  customDefs.set(kind, def);
+  return def;
+}
+
+/** Objetos de serie y propios que este layout posee (en la room o en el inventario), de serie primero. */
+export function ownedKinds(l: Pick<RoomLayout, 'items' | 'stash'>): ItemKind[] {
+  const seen = new Set<string>([...l.items.map((i) => i.kind), ...Object.keys(l.stash)]);
+  const builtin = ITEM_KINDS.filter((k) => seen.has(k));
+  const custom = [...seen].filter((k): k is ObjectKind => isObjectKind(k)).sort();
+  return [...builtin, ...custom];
+}
 
 export type PlacedItem = {
   id: string;
@@ -128,20 +172,20 @@ export type RoomLayout = {
 export type Dim = { w: number; d: number };
 
 export function dims(it: Pick<PlacedItem, 'kind' | 'rot'>): Dim {
-  const def = ITEMS[it.kind];
+  const def = itemDef(it.kind);
   if (def.mount === 'wall') return { w: def.w, d: 1 };
   return it.rot ? { w: def.d, d: def.w } : { w: def.w, d: def.d };
 }
 
 /** Pieza girada 90° dentro de su huella (para dibujar). */
 export function orientedParts(kind: ItemKind, rot: 0 | 1): Part[] {
-  const def = ITEMS[kind];
+  const def = itemDef(kind);
   if (!rot) return def.parts;
   return def.parts.map((p) => ({ ...p, dx: p.dy, dy: def.w - p.dx - p.w, w: p.d, d: p.w }));
 }
 
 export function cellsOf(it: PlacedItem): Array<[number, number]> {
-  if (ITEMS[it.kind].mount === 'wall') return [];
+  if (itemDef(it.kind).mount === 'wall') return [];
   const { w, d } = dims(it);
   const out: Array<[number, number]> = [];
   for (let dy = 0; dy < d; dy++) for (let dx = 0; dx < w; dx++) out.push([it.x + dx, it.y + dy]);
@@ -152,7 +196,7 @@ export function cellsOf(it: PlacedItem): Array<[number, number]> {
 export function blockedCells(layout: RoomLayout): Set<string> {
   const s = new Set<string>();
   for (const it of layout.items) {
-    if (!ITEMS[it.kind].blocks) continue;
+    if (!itemDef(it.kind).blocks) continue;
     for (const [x, y] of cellsOf(it)) s.add(`${x},${y}`);
   }
   return s;
@@ -197,7 +241,7 @@ export function validateLayout(l: RoomLayout): string | null {
   const walls: Record<Wall, Map<number, string>> = { left: new Map(), right: new Map() };
 
   for (const it of l.items) {
-    const def = ITEMS[it.kind];
+    const def = itemDef(it.kind);
     if (!def) return 'objeto desconocido';
     if (ids.has(it.id)) return 'objeto duplicado';
     ids.add(it.id);
@@ -226,7 +270,7 @@ export function validateLayout(l: RoomLayout): string | null {
   }
 
   for (const [kind, n] of Object.entries(l.stash)) {
-    if (!(kind in ITEMS) || !Number.isInteger(n) || (n as number) < 0) return 'inventario inválido';
+    if (!isItemKind(kind) || !Number.isInteger(n) || (n as number) < 0) return 'inventario inválido';
   }
   if (l.editors.length > MAX_EDITORS) return 'demasiados editores';
   return null;
@@ -274,8 +318,8 @@ export function applyOp(layout: RoomLayout, op: Op, role: Role, now = Date.now()
     case 'move': {
       const it = find(op.id);
       if (!it) return fail('objeto no encontrado');
-      if (it.locked) return fail('está bloqueado 🔒');
-      if (ITEMS[it.kind].mount === 'wall') {
+      if (it.locked) return fail('está bloqueado');
+      if (itemDef(it.kind).mount === 'wall') {
         it.wall = op.wall ?? it.wall;
         it.x = op.x;
         it.y = 0;
@@ -288,8 +332,8 @@ export function applyOp(layout: RoomLayout, op: Op, role: Role, now = Date.now()
     case 'rotate': {
       const it = find(op.id);
       if (!it) return fail('objeto no encontrado');
-      if (it.locked) return fail('está bloqueado 🔒');
-      if (ITEMS[it.kind].mount === 'wall') return fail('las cosas de pared no giran');
+      if (it.locked) return fail('está bloqueado');
+      if (itemDef(it.kind).mount === 'wall') return fail('las cosas de pared no giran');
       it.rot = it.rot ? 0 : 1;
       break;
     }
@@ -302,7 +346,7 @@ export function applyOp(layout: RoomLayout, op: Op, role: Role, now = Date.now()
     case 'place': {
       const have = next.stash[op.kind] ?? 0;
       if (have <= 0) return fail('no tienes de ese objeto en el inventario');
-      const wall = ITEMS[op.kind].mount === 'wall';
+      const wall = itemDef(op.kind).mount === 'wall';
       next.items.push({
         id: `it-${next.nextId}`,
         kind: op.kind,
@@ -320,7 +364,7 @@ export function applyOp(layout: RoomLayout, op: Op, role: Role, now = Date.now()
     case 'store': {
       const it = find(op.id);
       if (!it) return fail('objeto no encontrado');
-      if (it.locked) return fail('está bloqueado 🔒');
+      if (it.locked) return fail('está bloqueado');
       next.items = next.items.filter((i) => i.id !== op.id);
       next.stash[it.kind] = (next.stash[it.kind] ?? 0) + 1;
       break;
@@ -377,7 +421,7 @@ export function defaultLayout(owner: string, roomId = 'my-room', now = Date.now(
 
 /** Primer hueco válido para colocar un objeto del inventario (de dentro hacia fuera). */
 export function findFreeSpot(layout: RoomLayout, kind: ItemKind): { x: number; y: number; wall?: Wall } | null {
-  const def = ITEMS[kind];
+  const def = itemDef(kind);
   const probe = (cand: PlacedItem) => validateLayout({ ...layout, items: [...layout.items, cand] }) === null;
   if (def.mount === 'wall') {
     for (const wall of ['left', 'right'] as const) {
@@ -399,3 +443,11 @@ export function findFreeSpot(layout: RoomLayout, kind: ItemKind): { x: number; y
 
 export const stashCount = (l: RoomLayout, kind: ItemKind) => l.stash[kind] ?? 0;
 export const placedCount = (l: RoomLayout, kind: ItemKind) => l.items.filter((i) => i.kind === kind).length;
+
+/** Añade unidades al inventario (p. ej. el creador de un objeto recibe la primera). Devuelve un layout nuevo. */
+export function grantItem(layout: RoomLayout, kind: ItemKind, n = 1, now = Date.now()): RoomLayout {
+  const next: RoomLayout = { ...layout, stash: { ...layout.stash, [kind]: (layout.stash[kind] ?? 0) + n }, rev: layout.rev + 1, updatedAt: now };
+  const err = validateLayout(next);
+  if (err) throw new Error(err);
+  return next;
+}
